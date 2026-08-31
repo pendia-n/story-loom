@@ -1,0 +1,69 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - link "Story Loom home" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - text: ✦ story loom
+    - generic [ref=e5]:
+      - generic [ref=e6]: A quiet place for your life
+      - button "Sign in" [ref=e8] [cursor=pointer]
+  - main [ref=e9]:
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]: Your life, on its own red carpet
+        - heading [level=1] [ref=e13]:
+          - text: Keep the glow
+          - emphasis [ref=e14]: of every chapter.
+        - paragraph [ref=e15]: Turn the moments you already have into a room you can return to. No arranging files. No learning a tool. Just bring the light in.
+        - generic [ref=e16]:
+          - button "Start a chapter ↗" [ref=e17] [cursor=pointer]
+          - link "Walk through the example ↓" [ref=e18] [cursor=pointer]:
+            - /url: "#room"
+      - generic [ref=e19]:
+        - generic [ref=e20]: "01"
+        - paragraph [ref=e21]:
+          - text: Some memoriesdeserve a little
+          - strong [ref=e22]: more atmosphere.
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]:
+          - generic [ref=e26]: The room is open
+          - heading "A little light from the way home" [level=2] [ref=e27]
+          - paragraph [ref=e28]: A demo chapter, made for wandering.
+        - generic [ref=e29]:
+          - generic [ref=e30]: 6 scenes
+          - generic [ref=e31]: ·
+          - generic [ref=e32]: Gallery room
+      - generic [ref=e33]:
+        - generic "Interactive three-dimensional gallery" [ref=e34]
+        - generic [ref=e35]: Select a frame to linger
+      - generic "Gallery view mode" [ref=e39]:
+        - button "Room" [ref=e40] [cursor=pointer]
+        - button "Orbit" [ref=e41] [cursor=pointer]
+        - button "Walk view" [ref=e42] [cursor=pointer]
+    - generic [ref=e43]:
+      - generic [ref=e44]:
+        - generic [ref=e45]: One room, many ways back
+        - heading "A gallery that waits for your next mood." [level=2] [ref=e46]: A gallery that waitsfor your next mood.
+      - generic [ref=e47]:
+        - article [ref=e48]:
+          - text: "01"
+          - heading "Collect gently" [level=3] [ref=e49]
+          - paragraph [ref=e50]: Drop in a few photos. Story Loom makes the room, the rhythm, and the little pause between each scene.
+        - article [ref=e51]:
+          - text: "02"
+          - heading "Wander slowly" [level=3] [ref=e52]
+          - paragraph [ref=e53]: Choose a calm orbit or walk the walls. The gallery is made to be visited, not completed.
+        - article [ref=e54]:
+          - text: "03"
+          - heading "Keep it yours" [level=3] [ref=e55]
+          - paragraph [ref=e56]: Your chapters live behind your account. There is no public feed asking you to perform your memories.
+    - generic [ref=e57]:
+      - generic [ref=e58]: ✦
+      - generic [ref=e59]:
+        - generic [ref=e60]: A moment to linger
+        - heading "The first warm day" [level=2] [ref=e61]
+        - paragraph [ref=e62]: A little more light than yesterday.
+      - generic [ref=e63]: 01 / 06
+  - contentinfo [ref=e64]:
+    - generic [ref=e65]: story loom · made for the moments that stay
+    - generic [ref=e66]: v1 · your private gallery
