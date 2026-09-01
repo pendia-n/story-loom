@@ -22,6 +22,7 @@ function cleansePng(bytes: Uint8Array) {
   const kept: Uint8Array[] = [bytes.subarray(0, 8)]
   let offset = 8
   let removed = false
+  let ended = false
   while (offset + 12 <= bytes.length) {
     const view = new DataView(bytes.buffer, bytes.byteOffset + offset, bytes.length - offset)
     const length = view.getUint32(0)
@@ -31,10 +32,10 @@ function cleansePng(bytes: Uint8Array) {
     if (!['eXIf', 'tEXt', 'zTXt', 'iTXt', 'tIME'].includes(type)) kept.push(bytes.subarray(offset, end))
     else removed = true
     offset = end
-    if (type === 'IEND') break
+    if (type === 'IEND') { ended = true; break }
   }
-  if (offset !== bytes.length && offset < 8) return null
-  return { bytes: concat(kept), cleaned: removed || true }
+  if (!ended) return null
+  return { bytes: concat(kept), cleaned: removed || offset < bytes.length }
 }
 
 function cleanseWebp(bytes: Uint8Array) {
@@ -56,7 +57,7 @@ function cleanseWebp(bytes: Uint8Array) {
   const header = new Uint8Array(12)
   header.set([82, 73, 70, 70, 0, 0, 0, 0, 87, 69, 66, 80])
   new DataView(header.buffer).setUint32(4, body.length + 4, true)
-  return { bytes: concat([header, body]), cleaned: removed || true }
+  return { bytes: concat([header, body]), cleaned: removed }
 }
 
 function readGifSubBlocks(bytes: Uint8Array, offset: number) {
@@ -84,7 +85,7 @@ function cleanseGif(bytes: Uint8Array) {
     const marker = bytes[offset]
     if (marker === 0x3b) {
       output.push(bytes.subarray(offset, offset + 1))
-      return { bytes: concat(output), cleaned: removed || true }
+      return { bytes: concat(output), cleaned: removed }
     }
     if (marker === 0x2c) {
       if (offset + 10 > bytes.length) return null
@@ -142,35 +143,41 @@ export function isLikelyMp4(bytes: Uint8Array) {
 
 export function mp4DurationSeconds(bytes: Uint8Array) {
   if (!isLikelyMp4(bytes)) return null
-  let offset = 0
-  while (offset + 8 <= bytes.length) {
-    const view = new DataView(bytes.buffer, bytes.byteOffset + offset, bytes.length - offset)
-    let size = view.getUint32(0)
-    const type = ascii(bytes, offset + 4, 4)
-    let header = 8
-    if (size === 1) {
-      if (offset + 16 > bytes.length) return null
-      const wide = new DataView(bytes.buffer, bytes.byteOffset + offset + 8, 8).getBigUint64(0)
-      size = Number(wide)
-      header = 16
-    } else if (size === 0) size = bytes.length - offset
-    if (size < header || offset + size > bytes.length) return null
-    if (type === 'mvhd') {
-      const version = bytes[offset + header]
-      const base = offset + header + 4
-      if (version === 0 && base + 12 <= bytes.length) {
-        const timescale = new DataView(bytes.buffer, bytes.byteOffset + base + 4, 4).getUint32(0)
-        const duration = new DataView(bytes.buffer, bytes.byteOffset + base + 8, 4).getUint32(0)
-        return timescale ? duration / timescale : null
+  function findMovieHeader(start: number, end: number): number | null {
+    let offset = start
+    while (offset + 8 <= end) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset + offset, end - offset)
+      let size = view.getUint32(0)
+      const type = ascii(bytes, offset + 4, 4)
+      let header = 8
+      if (size === 1) {
+        if (offset + 16 > end) return null
+        size = Number(new DataView(bytes.buffer, bytes.byteOffset + offset + 8, 8).getBigUint64(0))
+        header = 16
+      } else if (size === 0) size = end - offset
+      if (size < header || offset + size > end) return null
+      if (type === 'mvhd') {
+        const version = bytes[offset + header]
+        const base = offset + header + 4
+        if (version === 0 && base + 12 <= offset + size) {
+          const timescale = new DataView(bytes.buffer, bytes.byteOffset + base + 4, 4).getUint32(0)
+          const duration = new DataView(bytes.buffer, bytes.byteOffset + base + 8, 4).getUint32(0)
+          return timescale ? duration / timescale : null
+        }
+        if (version === 1 && base + 24 <= offset + size) {
+          const timescale = new DataView(bytes.buffer, bytes.byteOffset + base + 16, 4).getUint32(0)
+          const duration = new DataView(bytes.buffer, bytes.byteOffset + base + 20, 8).getBigUint64(0)
+          return timescale ? Number(duration) / timescale : null
+        }
+        return null
       }
-      if (version === 1 && base + 24 <= bytes.length) {
-        const timescale = new DataView(bytes.buffer, bytes.byteOffset + base + 16, 4).getUint32(0)
-        const duration = new DataView(bytes.buffer, bytes.byteOffset + base + 20, 8).getBigUint64(0)
-        return timescale ? Number(duration) / timescale : null
+      if (type === 'moov') {
+        const nested = findMovieHeader(offset + header, offset + size)
+        if (nested !== null) return nested
       }
-      return null
+      offset += size
     }
-    offset += size
+    return null
   }
-  return null
+  return findMovieHeader(0, bytes.length)
 }

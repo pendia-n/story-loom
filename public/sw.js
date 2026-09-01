@@ -1,5 +1,5 @@
-const CACHE_NAME = 'story-loom-shell-v1'
-const SHELL = ['/', '/manifest.webmanifest', '/story.svg', '/favicon.ico', '/icon-192.png', '/icon-512.png']
+const CACHE_NAME = 'story-loom-shell-v2'
+const SHELL = ['/', '/manifest.webmanifest', '/story.svg', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)))
@@ -17,11 +17,13 @@ self.addEventListener('fetch', (event) => {
   const request = event.request
   const url = new URL(request.url)
   if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return
-  event.respondWith(
-    fetch(request).then((response) => {
-      const copy = response.clone()
-      caches.open(CACHE_NAME).then((cache) => cache.put(request, copy))
-      return response
-    }).catch(() => caches.match(request).then((cached) => cached || caches.match('/'))),
-  )
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request).catch(() => caches.match('/')))
+    return
+  }
+  if (!/\.(?:js|css|png|svg|woff2?|webmanifest)$/.test(url.pathname)) return
+  event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+    if (response.ok) event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone())))
+    return response
+  })))
 })

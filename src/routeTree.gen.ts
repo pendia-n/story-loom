@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as FaqRouteImport } from './routes/faq'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as RecoveryRouteImport } from './routes/recovery'
@@ -38,6 +39,7 @@ import { Route as ApiStripeWebhookRouteImport } from './routes/api/stripe/webhoo
 import { Route as ApiAuthRecoveryResetRouteImport } from './routes/api/auth/recovery/reset'
 import { Route as ApiAuthRecoveryStartRouteImport } from './routes/api/auth/recovery/start'
 import { Route as ApiAuthRecoveryVerifyRouteImport } from './routes/api/auth/recovery/verify'
+import { Route as ApiAuthRegisterTotpSetupRouteImport } from './routes/api/auth/register/totp-setup'
 import { Route as ApiSecurityTotpDisableRouteImport } from './routes/api/security/totp/disable'
 import { Route as ApiSecurityTotpEnableRouteImport } from './routes/api/security/totp/enable'
 import { Route as ApiSecurityTotpSetupRouteImport } from './routes/api/security/totp/setup'
@@ -55,6 +57,11 @@ const AboutRoute = AboutRouteImport.update({
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FaqRoute = FaqRouteImport.update({
+  id: '/faq',
+  path: '/faq',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -187,6 +194,12 @@ const ApiAuthRecoveryVerifyRoute = ApiAuthRecoveryVerifyRouteImport.update({
   path: '/api/auth/recovery/verify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthRegisterTotpSetupRoute =
+  ApiAuthRegisterTotpSetupRouteImport.update({
+    id: '/totp-setup',
+    path: '/totp-setup',
+    getParentRoute: () => ApiAuthRegisterRoute,
+  } as any)
 const ApiSecurityTotpDisableRoute = ApiSecurityTotpDisableRouteImport.update({
   id: '/api/security/totp/disable',
   path: '/api/security/totp/disable',
@@ -207,6 +220,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/app': typeof AppRoute
+  '/faq': typeof FaqRoute
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/recovery': typeof RecoveryRoute
@@ -221,7 +235,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/me': typeof ApiAuthMeRoute
-  '/api/auth/register': typeof ApiAuthRegisterRoute
+  '/api/auth/register': typeof ApiAuthRegisterRouteWithChildren
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/status': typeof ApiBillingStatusRoute
   '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRoute
@@ -233,6 +247,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/recovery/reset': typeof ApiAuthRecoveryResetRoute
   '/api/auth/recovery/start': typeof ApiAuthRecoveryStartRoute
   '/api/auth/recovery/verify': typeof ApiAuthRecoveryVerifyRoute
+  '/api/auth/register/totp-setup': typeof ApiAuthRegisterTotpSetupRoute
   '/api/security/totp/disable': typeof ApiSecurityTotpDisableRoute
   '/api/security/totp/enable': typeof ApiSecurityTotpEnableRoute
   '/api/security/totp/setup': typeof ApiSecurityTotpSetupRoute
@@ -241,6 +256,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/app': typeof AppRoute
+  '/faq': typeof FaqRoute
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/recovery': typeof RecoveryRoute
@@ -255,7 +271,7 @@ export interface FileRoutesByTo {
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/me': typeof ApiAuthMeRoute
-  '/api/auth/register': typeof ApiAuthRegisterRoute
+  '/api/auth/register': typeof ApiAuthRegisterRouteWithChildren
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/status': typeof ApiBillingStatusRoute
   '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRoute
@@ -267,6 +283,7 @@ export interface FileRoutesByTo {
   '/api/auth/recovery/reset': typeof ApiAuthRecoveryResetRoute
   '/api/auth/recovery/start': typeof ApiAuthRecoveryStartRoute
   '/api/auth/recovery/verify': typeof ApiAuthRecoveryVerifyRoute
+  '/api/auth/register/totp-setup': typeof ApiAuthRegisterTotpSetupRoute
   '/api/security/totp/disable': typeof ApiSecurityTotpDisableRoute
   '/api/security/totp/enable': typeof ApiSecurityTotpEnableRoute
   '/api/security/totp/setup': typeof ApiSecurityTotpSetupRoute
@@ -276,6 +293,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/app': typeof AppRoute
+  '/faq': typeof FaqRoute
   '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/recovery': typeof RecoveryRoute
@@ -290,7 +308,7 @@ export interface FileRoutesById {
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/me': typeof ApiAuthMeRoute
-  '/api/auth/register': typeof ApiAuthRegisterRoute
+  '/api/auth/register': typeof ApiAuthRegisterRouteWithChildren
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/status': typeof ApiBillingStatusRoute
   '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRoute
@@ -302,6 +320,7 @@ export interface FileRoutesById {
   '/api/auth/recovery/reset': typeof ApiAuthRecoveryResetRoute
   '/api/auth/recovery/start': typeof ApiAuthRecoveryStartRoute
   '/api/auth/recovery/verify': typeof ApiAuthRecoveryVerifyRoute
+  '/api/auth/register/totp-setup': typeof ApiAuthRegisterTotpSetupRoute
   '/api/security/totp/disable': typeof ApiSecurityTotpDisableRoute
   '/api/security/totp/enable': typeof ApiSecurityTotpEnableRoute
   '/api/security/totp/setup': typeof ApiSecurityTotpSetupRoute
@@ -312,6 +331,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/app'
+    | '/faq'
     | '/pricing'
     | '/profile'
     | '/recovery'
@@ -338,6 +358,7 @@ export interface FileRouteTypes {
     | '/api/auth/recovery/reset'
     | '/api/auth/recovery/start'
     | '/api/auth/recovery/verify'
+    | '/api/auth/register/totp-setup'
     | '/api/security/totp/disable'
     | '/api/security/totp/enable'
     | '/api/security/totp/setup'
@@ -346,6 +367,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/app'
+    | '/faq'
     | '/pricing'
     | '/profile'
     | '/recovery'
@@ -372,6 +394,7 @@ export interface FileRouteTypes {
     | '/api/auth/recovery/reset'
     | '/api/auth/recovery/start'
     | '/api/auth/recovery/verify'
+    | '/api/auth/register/totp-setup'
     | '/api/security/totp/disable'
     | '/api/security/totp/enable'
     | '/api/security/totp/setup'
@@ -380,6 +403,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/app'
+    | '/faq'
     | '/pricing'
     | '/profile'
     | '/recovery'
@@ -406,6 +430,7 @@ export interface FileRouteTypes {
     | '/api/auth/recovery/reset'
     | '/api/auth/recovery/start'
     | '/api/auth/recovery/verify'
+    | '/api/auth/register/totp-setup'
     | '/api/security/totp/disable'
     | '/api/security/totp/enable'
     | '/api/security/totp/setup'
@@ -415,6 +440,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   AppRoute: typeof AppRoute
+  FaqRoute: typeof FaqRoute
   PricingRoute: typeof PricingRoute
   ProfileRoute: typeof ProfileRoute
   RecoveryRoute: typeof RecoveryRoute
@@ -429,7 +455,7 @@ export interface RootRouteChildren {
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
   ApiAuthLogoutRoute: typeof ApiAuthLogoutRoute
   ApiAuthMeRoute: typeof ApiAuthMeRoute
-  ApiAuthRegisterRoute: typeof ApiAuthRegisterRoute
+  ApiAuthRegisterRoute: typeof ApiAuthRegisterRouteWithChildren
   ApiBillingCheckoutRoute: typeof ApiBillingCheckoutRoute
   ApiBillingStatusRoute: typeof ApiBillingStatusRoute
   ApiSecurityPasswordRoute: typeof ApiSecurityPasswordRoute
@@ -465,6 +491,13 @@ declare module '@tanstack/react-router' {
       path: '/app'
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/faq': {
+      id: '/faq'
+      path: '/faq'
+      fullPath: '/faq'
+      preLoaderRoute: typeof FaqRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -649,6 +682,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthRecoveryVerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/register/totp-setup': {
+      id: '/api/auth/register/totp-setup'
+      path: '/totp-setup'
+      fullPath: '/api/auth/register/totp-setup'
+      preLoaderRoute: typeof ApiAuthRegisterTotpSetupRouteImport
+      parentRoute: typeof ApiAuthRegisterRoute
+    }
     '/api/security/totp/disable': {
       id: '/api/security/totp/disable'
       path: '/api/security/totp/disable'
@@ -697,10 +737,23 @@ const ApiMediaRouteWithChildren = ApiMediaRoute._addFileChildren(
   ApiMediaRouteChildren,
 )
 
+interface ApiAuthRegisterRouteChildren {
+  ApiAuthRegisterTotpSetupRoute: typeof ApiAuthRegisterTotpSetupRoute
+}
+
+const ApiAuthRegisterRouteChildren: ApiAuthRegisterRouteChildren = {
+  ApiAuthRegisterTotpSetupRoute: ApiAuthRegisterTotpSetupRoute,
+}
+
+const ApiAuthRegisterRouteWithChildren = ApiAuthRegisterRoute._addFileChildren(
+  ApiAuthRegisterRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   AppRoute: AppRoute,
+  FaqRoute: FaqRoute,
   PricingRoute: PricingRoute,
   ProfileRoute: ProfileRoute,
   RecoveryRoute: RecoveryRoute,
@@ -715,7 +768,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthLoginRoute: ApiAuthLoginRoute,
   ApiAuthLogoutRoute: ApiAuthLogoutRoute,
   ApiAuthMeRoute: ApiAuthMeRoute,
-  ApiAuthRegisterRoute: ApiAuthRegisterRoute,
+  ApiAuthRegisterRoute: ApiAuthRegisterRouteWithChildren,
   ApiBillingCheckoutRoute: ApiBillingCheckoutRoute,
   ApiBillingStatusRoute: ApiBillingStatusRoute,
   ApiSecurityPasswordRoute: ApiSecurityPasswordRoute,

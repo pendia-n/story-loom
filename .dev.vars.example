@@ -1,11 +1,14 @@
-SESSION_SECRET=replace-with-a-long-random-local-secret
+JWT_SECRET=replace-with-output-of-openssl-rand-hex-32
 # Optional: enable the explicit, user-consented quiet-editor action.
 OPENROUTER_API_KEY=replace-with-server-only-openrouter-key
-OPENROUTER_MODEL=openai/gpt-4o-mini
 # Optional: enable hosted Stripe Checkout. Never expose these to the browser.
 STRIPE_SECRET_KEY=replace-with-server-only-stripe-key
 STRIPE_WEBHOOK_SECRET=replace-with-stripe-webhook-signing-secret
 STRIPE_PRICE_MEMORY=price_from_stripe_dashboard
 STRIPE_PRICE_STUDIO=price_from_stripe_dashboard
 STRIPE_PRICE_GOLDEN_HOUR=price_from_stripe_dashboard
+STRIPE_PRICE_RAIN_WINDOW=price_from_stripe_dashboard
+STRIPE_PRICE_STARDUST_CEILING=price_from_stripe_dashboard
+STRIPE_PRICE_PREMIERE_NIGHT=price_from_stripe_dashboard
+STRIPE_PRICE_KEEPSAKE_EXPORT=price_from_stripe_dashboard
 APP_URL=https://story-loom.pendia-community.workers.dev

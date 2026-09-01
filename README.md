@@ -1,8 +1,8 @@
-Welcome to your new TanStack Start app!
+Story Loom is a private, responsive Three.js memory gallery built with TanStack Start and Cloudflare Workers.
 
 # Getting Started
 
-To run this application:
+Run locally:
 
 ```bash
 pnpm install
@@ -33,13 +33,13 @@ If you prefer not to use Tailwind CSS:
 
 ## Deploy to Cloudflare Workers
 
-This project uses the Cloudflare Vite plugin (configured in `vite.config.ts`) and `wrangler.jsonc`:
+This project uses the Cloudflare Vite plugin (configured in `vite.config.ts`) and `wrangler.jsonc`. It uses D1 for accounts and chapters, private R2 for media, encrypted HttpOnly session cookies, CSRF checks, and file-based TanStack routing:
 
 1. Install Wrangler: `npm install -g wrangler`
 2. Authenticate: `wrangler login`
 3. Deploy: `npx wrangler deploy`
 
-For production env vars, run `wrangler secret put MY_VAR` for each secret listed in `.env.example`. Public (non-secret) vars go in `wrangler.jsonc` under `vars`.
+For production secrets and provider setup, see [`DEPLOY.md`](DEPLOY.md). Never put session, Stripe, OpenRouter, or R2 credentials in `vars` or client code.
 
 KV, D1, R2, and Durable Object bindings are configured in `wrangler.jsonc` — see https://developers.cloudflare.com/workers/wrangler/configuration/.
 

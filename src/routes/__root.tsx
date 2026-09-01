@@ -1,6 +1,4 @@
 import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
-import { TanStackDevtools } from '@tanstack/react-devtools'
 import Footer from '../components/Footer'
 import Header from '../components/Header'
 import ServiceWorkerRegister from '../components/ServiceWorkerRegister'
@@ -45,7 +43,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <head>
         <HeadContent />
         <link rel="manifest" href="/manifest.webmanifest" />
-        <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" href="/story.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/story.svg" />
       </head>
@@ -54,17 +51,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         {children}
         <Footer />
         <ServiceWorkerRegister />
-        <TanStackDevtools
-          config={{
-            position: 'bottom-right',
-          }}
-          plugins={[
-            {
-              name: 'Tanstack Router',
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-          ]}
-        />
         <Scripts />
       </body>
     </html>

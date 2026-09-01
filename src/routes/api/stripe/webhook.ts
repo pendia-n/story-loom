@@ -18,13 +18,14 @@ export const Route = createFileRoute('/api/stripe/webhook')({
         if (event.type === 'checkout.session.completed') {
           const userId = String(object.client_reference_id ?? (object.metadata as Record<string, unknown> | undefined)?.user_id ?? '')
           const product = String((object.metadata as Record<string, unknown> | undefined)?.product_code ?? '')
+          const chapterId = String((object.metadata as Record<string, unknown> | undefined)?.chapter_id ?? '')
           if (userId && product) {
             if (object.mode === 'subscription') {
               await db.prepare('INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, tier, status, current_period_end, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6) ON CONFLICT(user_id) DO UPDATE SET stripe_customer_id = excluded.stripe_customer_id, stripe_subscription_id = excluded.stripe_subscription_id, tier = excluded.tier, status = excluded.status, updated_at = excluded.updated_at')
                 .bind(userId, String(object.customer ?? ''), String(object.subscription ?? ''), product, 'active', Math.floor(Date.now() / 1000)).run()
             } else {
-              await db.prepare('INSERT OR IGNORE INTO purchases (id, user_id, stripe_session_id, product_code, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)')
-                .bind(crypto.randomUUID(), userId, String(object.id), product, 'paid', Math.floor(Date.now() / 1000)).run()
+              await db.prepare('INSERT OR IGNORE INTO purchases (id, user_id, stripe_session_id, product_code, status, created_at, chapter_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)')
+                .bind(crypto.randomUUID(), userId, String(object.id), product, 'paid', Math.floor(Date.now() / 1000), chapterId || null).run()
             }
           }
         }

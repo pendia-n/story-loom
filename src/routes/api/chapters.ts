@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentUser, getDatabase, json, requireCsrf } from '../../lib/server/auth'
+import { getUserTier, PRODUCT_LIMITS } from '../../lib/server/limits'
 
 export const Route = createFileRoute('/api/chapters')({
   server: {
@@ -16,6 +17,9 @@ export const Route = createFileRoute('/api/chapters')({
         const user = await getCurrentUser(request)
         if (!user) return json({ error: 'Sign in to create a chapter.' }, { status: 401 })
         if (!(await requireCsrf(request))) return json({ error: 'Security check failed. Refresh and try again.' }, { status: 403 })
+        const tier = await getUserTier(user.id)
+        const count = await getDatabase().prepare('SELECT COUNT(*) AS count FROM chapters WHERE owner_id = ?1').bind(user.id).first<{ count: number }>()
+        if ((count?.count ?? 0) >= PRODUCT_LIMITS[tier].chapters) return json({ error: `Your ${tier} plan holds ${PRODUCT_LIMITS[tier].chapters} chapter${PRODUCT_LIMITS[tier].chapters === 1 ? '' : 's'}. Existing rooms remain open.` }, { status: 402 })
         const body = await request.json() as { title?: string; subtitle?: string }
         const title = body.title?.trim().slice(0, 80) || 'A new chapter'
         const subtitle = body.subtitle?.trim().slice(0, 160) || 'A room for the moments worth keeping.'

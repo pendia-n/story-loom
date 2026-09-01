@@ -1,9 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentUser, getDatabase, getRuntimeEnv, json, requireCsrf } from '../../../lib/server/auth'
+import { AI_CATALOG, modelRoute, monthlyRequestAllowance, type AiKind, type AiTier } from '../../../lib/server/ai-catalog'
 
 type OpenRouterResponse = {
   choices?: Array<{ message?: { content?: string } }>
-  usage?: { prompt_tokens?: number; completion_tokens?: number }
+  model?: string
+  usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number }
   error?: { message?: string }
 }
 
@@ -16,14 +18,21 @@ export const Route = createFileRoute('/api/ai/chapter')({
         if (!(await requireCsrf(request))) return json({ error: 'Security check failed.' }, { status: 403 })
         const env = getRuntimeEnv()
         if (!env.OPENROUTER_API_KEY) return json({ error: 'The quiet editor is not configured yet.' }, { status: 503 })
-        const body = await request.json() as { chapterId?: string; instruction?: string; shareWithProvider?: boolean }
+        const body = await request.json() as { chapterId?: string; instruction?: string; kind?: AiKind; shareWithProvider?: boolean }
         if (!body.shareWithProvider) return json({ error: 'Confirm that this prompt may be sent to the external editor.' }, { status: 400 })
         const chapterId = body.chapterId ?? ''
         const chapter = await getDatabase().prepare('SELECT id FROM chapters WHERE id = ?1 AND owner_id = ?2').bind(chapterId, user.id).first()
         if (!chapter) return json({ error: 'Chapter not found.' }, { status: 404 })
         const instruction = body.instruction?.trim().slice(0, 800)
         if (!instruction) return json({ error: 'Write a small request for the editor.' }, { status: 400 })
-        const model = env.OPENROUTER_MODEL || 'openai/gpt-4o-mini'
+        const kind = body.kind && AI_CATALOG[body.kind] ? body.kind : 'caption-polish'
+        const job = AI_CATALOG[kind]
+        const subscription = await getDatabase().prepare("SELECT tier FROM subscriptions WHERE user_id = ?1 AND status IN ('active', 'trialing')").bind(user.id).first<{ tier: AiTier }>()
+        const tier: AiTier = subscription?.tier || 'free'
+        const monthStart = Math.floor(new Date(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1).getTime() / 1000)
+        const used = await getDatabase().prepare("SELECT COUNT(*) AS requests FROM ai_jobs WHERE user_id = ?1 AND status = 'completed' AND created_at >= ?2").bind(user.id, monthStart).first<{ requests: number }>()
+        if ((used?.requests || 0) >= monthlyRequestAllowance[tier]) return json({ error: 'Your included Quiet Editor requests are used for this month.', tier, used: used?.requests || 0, allowance: monthlyRequestAllowance[tier] }, { status: 402 })
+        const models = modelRoute(tier)
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -33,11 +42,12 @@ export const Route = createFileRoute('/api/ai/chapter')({
             'X-OpenRouter-Title': 'Story Loom',
           },
           body: JSON.stringify({
-            model,
+            models,
+            provider: { data_collection: 'deny', allow_fallbacks: true },
             temperature: 0.7,
-            max_tokens: 220,
+            max_tokens: job.maxTokens,
             messages: [
-              { role: 'system', content: 'You are a restrained creative editor. Return a short editable suggestion. Never claim to know the user, never write as if you witnessed their memories, and do not mention AI.' },
+              { role: 'system', content: `You are Story Loom's restrained Quiet Editor. ${job.system} Never claim to know the user, never write as if you witnessed their memories, and do not mention AI.` },
               { role: 'user', content: instruction },
             ],
           }),
@@ -46,9 +56,10 @@ export const Route = createFileRoute('/api/ai/chapter')({
         if (!response.ok) return json({ error: result.error?.message || 'The quiet editor could not finish.' }, { status: 502 })
         const text = result.choices?.[0]?.message?.content?.trim()
         if (!text) return json({ error: 'The quiet editor returned no suggestion.' }, { status: 502 })
+        const resolvedModel = result.model || models[0]
         await getDatabase().prepare('INSERT INTO ai_jobs (id, user_id, chapter_id, kind, status, model, input_tokens, output_tokens, result_json, created_at, completed_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)')
-          .bind(crypto.randomUUID(), user.id, chapterId, 'chapter-note', 'completed', model, result.usage?.prompt_tokens ?? null, result.usage?.completion_tokens ?? null, JSON.stringify({ text }), Math.floor(Date.now() / 1000)).run()
-        return json({ suggestion: text, model })
+          .bind(crypto.randomUUID(), user.id, chapterId, kind, 'completed', resolvedModel, result.usage?.prompt_tokens ?? null, result.usage?.completion_tokens ?? null, JSON.stringify({ text, cost: result.usage?.cost ?? null, tier }), Math.floor(Date.now() / 1000)).run()
+        return json({ suggestion: text, model: resolvedModel, tier, requestsUsed: (used?.requests || 0) + 1, allowance: monthlyRequestAllowance[tier], cost: result.usage?.cost ?? null })
       },
     },
   },

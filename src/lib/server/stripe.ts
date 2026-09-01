@@ -1,18 +1,22 @@
 import { getRuntimeEnv } from './auth'
 
-type CheckoutProduct = 'memory' | 'studio' | 'golden-hour'
+export type CheckoutProduct = 'memory' | 'studio' | 'golden-hour' | 'rain-window' | 'stardust-ceiling' | 'premiere-night' | 'keepsake-export'
 
 const productEnv: Record<CheckoutProduct, keyof ReturnType<typeof getRuntimeEnv>> = {
   memory: 'STRIPE_PRICE_MEMORY',
   studio: 'STRIPE_PRICE_STUDIO',
   'golden-hour': 'STRIPE_PRICE_GOLDEN_HOUR',
+  'rain-window': 'STRIPE_PRICE_RAIN_WINDOW',
+  'stardust-ceiling': 'STRIPE_PRICE_STARDUST_CEILING',
+  'premiere-night': 'STRIPE_PRICE_PREMIERE_NIGHT',
+  'keepsake-export': 'STRIPE_PRICE_KEEPSAKE_EXPORT',
 }
 
 export function productMode(product: CheckoutProduct) {
-  return product === 'golden-hour' ? 'payment' : 'subscription'
+  return product === 'memory' || product === 'studio' ? 'subscription' : 'payment'
 }
 
-export async function createStripeCheckout(product: CheckoutProduct, userId: string, request: Request) {
+export async function createStripeCheckout(product: CheckoutProduct, userId: string, request: Request, chapterId?: string) {
   const env = getRuntimeEnv()
   if (!env.STRIPE_SECRET_KEY) throw new Error('Stripe is not configured')
   const price = String(env[productEnv[product]] ?? '')
@@ -25,6 +29,7 @@ export async function createStripeCheckout(product: CheckoutProduct, userId: str
   fields.set('client_reference_id', userId)
   fields.set('metadata[user_id]', userId)
   fields.set('metadata[product_code]', product)
+  if (chapterId) fields.set('metadata[chapter_id]', chapterId)
   fields.set('success_url', `${base}/billing/success?session_id={CHECKOUT_SESSION_ID}`)
   fields.set('cancel_url', `${base}/pricing`)
   fields.set('integration_identifier', `story_loom_${crypto.randomUUID().slice(0, 8)}`)

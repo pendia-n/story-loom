@@ -1,0 +1,104 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - link "Story Loom home" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e5]: story loom
+    - navigation "Story Loom sections" [ref=e6]:
+      - link "Rooms" [ref=e7] [cursor=pointer]:
+        - /url: /app
+      - link "About" [ref=e8] [cursor=pointer]:
+        - /url: /about
+      - link "FAQ" [ref=e9] [cursor=pointer]:
+        - /url: /faq
+      - link "Pricing" [ref=e10] [cursor=pointer]:
+        - /url: /pricing
+    - generic [ref=e11]:
+      - 'button "Theme mode: auto (system). Click to switch to light mode." [ref=e12] [cursor=pointer]':
+        - generic [ref=e13]: ◐
+        - generic [ref=e14]: Auto
+      - button "Sign in" [ref=e15] [cursor=pointer]
+  - main [ref=e17]:
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - generic [ref=e20]: Your life, on its own red carpet
+        - heading [level=1] [ref=e21]:
+          - text: Keep the glow
+          - emphasis [ref=e22]: of every chapter.
+        - paragraph [ref=e23]: Turn the moments you already have into a room you can return to. No arranging files. No learning a tool. Just bring the light in.
+        - generic [ref=e24]:
+          - button "Start a chapter ↗" [ref=e25] [cursor=pointer]
+          - link "Walk through the example ↓" [ref=e26] [cursor=pointer]:
+            - /url: "#room"
+      - generic [ref=e27]:
+        - generic [ref=e28]: "01"
+        - paragraph [ref=e29]:
+          - text: Some memoriesdeserve a little
+          - strong [ref=e30]: more atmosphere.
+    - generic [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]: The room is open
+          - heading "A little light from the way home" [level=2] [ref=e35]
+          - paragraph [ref=e36]: A demo chapter, made for wandering.
+        - generic [ref=e37]:
+          - generic [ref=e38]: 6 scenes
+          - generic [ref=e39]: ·
+          - generic [ref=e40]: Curated wall
+      - generic [ref=e41]:
+        - generic [ref=e43]:
+          - generic [ref=e44]: ✦
+          - paragraph [ref=e45]: Preparing the room…
+        - generic [ref=e46]: Select a frame to linger
+      - generic [ref=e50]:
+        - generic "Gallery view mode" [ref=e51]:
+          - button "Room wall" [ref=e52] [cursor=pointer]
+          - button "Orbit" [ref=e53] [cursor=pointer]
+          - button "Walk inside" [ref=e54] [cursor=pointer]
+        - paragraph [ref=e55]: See the whole chapter as a composed exhibition wall.
+    - generic [ref=e56]:
+      - generic [ref=e57]:
+        - generic [ref=e58]: One room, many ways back
+        - heading "A gallery that waits for your next mood." [level=2] [ref=e59]: A gallery that waitsfor your next mood.
+      - generic [ref=e60]:
+        - article [ref=e61]:
+          - text: "01"
+          - heading "Collect gently" [level=3] [ref=e62]
+          - paragraph [ref=e63]: Drop in a few photos. Story Loom makes the room, the rhythm, and the little pause between each scene.
+        - article [ref=e64]:
+          - text: "02"
+          - heading "Wander slowly" [level=3] [ref=e65]
+          - paragraph [ref=e66]: Choose a calm orbit or walk the walls. The gallery is made to be visited, not completed.
+        - article [ref=e67]:
+          - text: "03"
+          - heading "Keep it yours" [level=3] [ref=e68]
+          - paragraph [ref=e69]: Your chapters live behind your account. There is no public feed asking you to perform your memories.
+    - generic [ref=e70]:
+      - generic [ref=e71]:
+        - generic [ref=e72]: ✦
+        - generic [ref=e73]:
+          - generic [ref=e74]: A moment to linger
+          - heading "The first warm day" [level=2] [ref=e75]
+          - paragraph [ref=e76]: A little more light than yesterday.
+        - generic [ref=e77]: 01 / 06
+      - generic "All memories in this chapter" [ref=e78]:
+        - button "01 The first warm day" [ref=e79] [cursor=pointer]:
+          - generic [ref=e80]: "01"
+          - strong [ref=e81]: The first warm day
+        - button "02 Along the quiet coast" [ref=e82] [cursor=pointer]:
+          - generic [ref=e83]: "02"
+          - strong [ref=e84]: Along the quiet coast
+        - button "03 Small table, big story" [ref=e85] [cursor=pointer]:
+          - generic [ref=e86]: "03"
+          - strong [ref=e87]: Small table, big story
+        - button "04 After the rain" [ref=e88] [cursor=pointer]:
+          - generic [ref=e89]: "04"
+          - strong [ref=e90]: After the rain
+        - button "05 A window left open" [ref=e91] [cursor=pointer]:
+          - generic [ref=e92]: "05"
+          - strong [ref=e93]: A window left open
+        - button "06 The long way home" [ref=e94] [cursor=pointer]:
+          - generic [ref=e95]: "06"
+          - strong [ref=e96]: The long way home
+  - contentinfo [ref=e97]:
+    - generic [ref=e98]: story loom · made for the moments that stay
+    - generic [ref=e99]: v1 · your private gallery

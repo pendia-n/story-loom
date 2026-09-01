@@ -3,14 +3,17 @@ import { env as workerEnv } from 'cloudflare:workers'
 export type StoryLoomEnv = {
   DB?: D1Database
   MEDIA?: R2Bucket
-  SESSION_SECRET?: string
+  JWT_SECRET?: string
   OPENROUTER_API_KEY?: string
-  OPENROUTER_MODEL?: string
   STRIPE_SECRET_KEY?: string
   STRIPE_WEBHOOK_SECRET?: string
   STRIPE_PRICE_MEMORY?: string
   STRIPE_PRICE_STUDIO?: string
   STRIPE_PRICE_GOLDEN_HOUR?: string
+  STRIPE_PRICE_RAIN_WINDOW?: string
+  STRIPE_PRICE_STARDUST_CEILING?: string
+  STRIPE_PRICE_PREMIERE_NIGHT?: string
+  STRIPE_PRICE_KEEPSAKE_EXPORT?: string
   APP_URL?: string
 }
 
@@ -25,7 +28,8 @@ export type AuthUser = {
 const SESSION_COOKIE = 'story_loom_session'
 const CSRF_COOKIE = 'story_loom_csrf'
 const SESSION_DAYS = 363
-const PASSWORD_ITERATIONS = 120_000
+// Cloudflare Workers WebCrypto supports PBKDF2 up to 100,000 iterations.
+const PASSWORD_ITERATIONS = 100_000
 const RECOVERY_MINUTES = 10
 
 function getEnv() {
@@ -98,6 +102,53 @@ function cookie(name: string, value: string, maxAge: number, httpOnly: boolean) 
   return `${name}=${value}; Path=/; ${httpOnly ? 'HttpOnly; ' : ''}SameSite=Lax; Max-Age=${maxAge}`
 }
 
+type SessionClaims = { sub: string; sid: string; iat: number; exp: number }
+
+async function sessionKey() {
+  const secret = getEnv().JWT_SECRET
+  if (!secret || secret.length < 64 || !/^[0-9a-f]{64}$/i.test(secret)) {
+    throw new Error('JWT_SECRET must be configured with `openssl rand -hex 32`')
+  }
+  return crypto.subtle.importKey('raw', await sha256(secret) as unknown as BufferSource, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt'])
+}
+
+async function encryptSession(claims: SessionClaims) {
+  const protectedHeader = bytesToBase64Url(new TextEncoder().encode(JSON.stringify({ alg: 'dir', enc: 'A256GCM', typ: 'JWT' })))
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const encrypted = new Uint8Array(await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv as unknown as BufferSource, additionalData: new TextEncoder().encode(protectedHeader) as unknown as BufferSource, tagLength: 128 },
+    await sessionKey(),
+    new TextEncoder().encode(JSON.stringify(claims)) as unknown as BufferSource,
+  ))
+  const tag = encrypted.slice(-16)
+  const ciphertext = encrypted.slice(0, -16)
+  return `${protectedHeader}..${bytesToBase64Url(iv)}.${bytesToBase64Url(ciphertext)}.${bytesToBase64Url(tag)}`
+}
+
+async function decryptSession(token: string): Promise<SessionClaims | null> {
+  try {
+    const [protectedHeader, encryptedKey, ivValue, ciphertextValue, tagValue] = token.split('.')
+    if (!protectedHeader || encryptedKey !== '' || !ivValue || !ciphertextValue || !tagValue) return null
+    const header = JSON.parse(new TextDecoder().decode(base64UrlToBytes(protectedHeader))) as { alg?: string; enc?: string; typ?: string }
+    if (header.alg !== 'dir' || header.enc !== 'A256GCM' || header.typ !== 'JWT') return null
+    const ciphertext = base64UrlToBytes(ciphertextValue)
+    const tag = base64UrlToBytes(tagValue)
+    const joined = new Uint8Array(ciphertext.length + tag.length)
+    joined.set(ciphertext)
+    joined.set(tag, ciphertext.length)
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: base64UrlToBytes(ivValue) as unknown as BufferSource, additionalData: new TextEncoder().encode(protectedHeader) as unknown as BufferSource, tagLength: 128 },
+      await sessionKey(), joined as unknown as BufferSource,
+    )
+    const claims = JSON.parse(new TextDecoder().decode(decrypted)) as Partial<SessionClaims>
+    if (typeof claims.sub !== 'string' || typeof claims.sid !== 'string' || typeof claims.iat !== 'number' || typeof claims.exp !== 'number') return null
+    if (claims.exp <= Math.floor(Date.now() / 1000) || claims.iat > Math.floor(Date.now() / 1000) + 60) return null
+    return claims as SessionClaims
+  } catch {
+    return null
+  }
+}
+
 export function withSecureCookie(request: Request, value: string) {
   return request.url.startsWith('https://') ? `${value}; Secure` : value
 }
@@ -119,13 +170,14 @@ export function requireSameOrigin(request: Request) {
 }
 
 export async function createSession(userId: string) {
-  const sessionToken = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)))
+  const sessionId = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)))
   const csrfToken = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)))
   const now = Math.floor(Date.now() / 1000)
   const expiresAt = now + SESSION_DAYS * 86_400
   await getDatabase().prepare(
     'INSERT INTO sessions (token_hash, user_id, csrf_hash, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)',
-  ).bind(bytesToBase64Url(await sha256(sessionToken)), userId, bytesToBase64Url(await sha256(csrfToken)), now, expiresAt).run()
+  ).bind(bytesToBase64Url(await sha256(sessionId)), userId, bytesToBase64Url(await sha256(csrfToken)), now, expiresAt).run()
+  const sessionToken = await encryptSession({ sub: userId, sid: sessionId, iat: now, exp: expiresAt })
   return {
     sessionCookie: cookie(SESSION_COOKIE, sessionToken, SESSION_DAYS * 86_400, true),
     csrfCookie: cookie(CSRF_COOKIE, csrfToken, SESSION_DAYS * 86_400, false),
@@ -139,13 +191,15 @@ export function clearSessionCookies() {
 async function currentSession(request: Request) {
   const token = parseCookies(request)[SESSION_COOKIE]
   if (!token) return null
-  const tokenHash = bytesToBase64Url(await sha256(token))
+  const claims = await decryptSession(token)
+  if (!claims) return null
+  const tokenHash = bytesToBase64Url(await sha256(claims.sid))
   return getDatabase().prepare(
     `SELECT s.token_hash, s.user_id, s.csrf_hash, u.id, u.username, u.created_at, u.totp_enabled,
       CASE WHEN u.security_question_1 IS NOT NULL AND u.security_question_2 IS NOT NULL THEN 1 ELSE 0 END AS has_security_questions
      FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = ?1 AND s.expires_at > ?2`,
-  ).bind(tokenHash, Math.floor(Date.now() / 1000)).first<{
+     WHERE s.token_hash = ?1 AND s.user_id = ?2 AND s.expires_at > ?3`,
+  ).bind(tokenHash, claims.sub, Math.floor(Date.now() / 1000)).first<{
     token_hash: string; user_id: string; csrf_hash: string; id: string; username: string; created_at: string
     totp_enabled: number; has_security_questions: number
   }>()
@@ -173,18 +227,21 @@ export async function requireCsrf(request: Request) {
 export async function deleteCurrentSession(request: Request) {
   const token = parseCookies(request)[SESSION_COOKIE]
   if (!token) return
-  await getDatabase().prepare('DELETE FROM sessions WHERE token_hash = ?1').bind(bytesToBase64Url(await sha256(token))).run()
+  const claims = await decryptSession(token)
+  if (!claims) return
+  await getDatabase().prepare('DELETE FROM sessions WHERE token_hash = ?1').bind(bytesToBase64Url(await sha256(claims.sid))).run()
 }
 
 export async function revokeUserSessions(userId: string) {
   await getDatabase().prepare('DELETE FROM sessions WHERE user_id = ?1').bind(userId).run()
 }
 
-export async function registerUser(username: string, password: string) {
+export async function registerUser(username: string, password: string, totpSecret?: string) {
   const id = crypto.randomUUID()
   const passwordHash = await digestPassword(password)
-  await getDatabase().prepare('INSERT INTO users (id, username, password_hash, created_at) VALUES (?1, ?2, ?3, ?4)')
-    .bind(id, username, passwordHash, new Date().toISOString()).run()
+  await getDatabase().prepare(
+    'INSERT INTO users (id, username, password_hash, created_at, totp_secret, totp_enabled) VALUES (?1, ?2, ?3, ?4, ?5, ?6)',
+  ).bind(id, username, passwordHash, new Date().toISOString(), totpSecret ?? null, totpSecret ? 1 : 0).run()
   return { id, username }
 }
 
@@ -197,6 +254,12 @@ export async function loginUser(username: string, password: string) {
 
 export async function changePassword(userId: string, password: string) {
   await getDatabase().prepare('UPDATE users SET password_hash = ?1 WHERE id = ?2').bind(await digestPassword(password), userId).run()
+}
+
+export function passwordValidationError(password: string) {
+  if (password.length < 12) return 'Use at least 12 characters.'
+  const groups = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((pattern) => pattern.test(password)).length
+  return groups < 3 ? 'Use at least three of: lowercase, uppercase, number, and symbol.' : null
 }
 
 export async function getRecoveryUser(username: string) {

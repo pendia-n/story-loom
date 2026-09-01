@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentUser, getDatabase, getMediaBucket, json, requireCsrf } from '../../lib/server/auth'
 import { cleanseImageMetadata, isLikelyMp4, mp4DurationSeconds } from '../../lib/server/media'
+import { getUserTier, PRODUCT_LIMITS } from '../../lib/server/limits'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024
@@ -28,6 +29,12 @@ export const Route = createFileRoute('/api/media')({
         const db = getDatabase()
         const chapter = await db.prepare('SELECT id FROM chapters WHERE id = ?1 AND owner_id = ?2').bind(chapterId, user.id).first()
         if (!chapter) return json({ error: 'Chapter not found.' }, { status: 404 })
+        const tier = await getUserTier(user.id)
+        const counts = await db.prepare("SELECT SUM(CASE WHEN content_type = 'video/mp4' THEN 1 ELSE 0 END) AS videos, SUM(CASE WHEN content_type <> 'video/mp4' THEN 1 ELSE 0 END) AS images FROM media WHERE chapter_id = ?1 AND owner_id = ?2").bind(chapterId, user.id).first<{ videos: number | null; images: number | null }>()
+        const isVideo = file.type === 'video/mp4'
+        const used = isVideo ? counts?.videos ?? 0 : counts?.images ?? 0
+        const allowed = isVideo ? PRODUCT_LIMITS[tier].videosPerChapter : PRODUCT_LIMITS[tier].imagesPerChapter
+        if (used >= allowed) return json({ error: `This ${tier} chapter already holds its ${allowed} ${isVideo ? 'short videos' : 'images'}. Existing moments remain available.` }, { status: 402 })
 
         const originalBytes = new Uint8Array(await file.arrayBuffer())
         let storedBytes: Uint8Array<ArrayBufferLike> = originalBytes
