@@ -8,9 +8,16 @@ type User = { id: string; username: string }
 type SecurityStatus = { totpEnabled: boolean; questionsEnabled: boolean; questions: string[] }
 
 const tiers = [
-  { code: 'free', name: 'Keepsake', price: '$0', cadence: 'forever', features: ['1 chapter', '12 images + 1 short video / chapter', '3 Quiet Editor moments / month', 'Room wall, Orbit, and Walk'] },
-  { code: 'memory', name: 'Memory', price: '$5', cadence: 'per month · $48/year', features: ['12 chapters', '60 images + 3 short videos / chapter', '30 Quiet Editor moments / month', 'All views + 3 ambient finishes'] },
-  { code: 'studio', name: 'Studio', price: '$12', cadence: 'per month · $108/year', features: ['50 chapters', '120 images + 8 short videos / chapter', '150 Quiet Editor moments / month', 'All finishes + high-quality exports'] },
+  { code: 'free', name: 'Keepsake', price: '$0', cadence: 'forever', features: ['1 chapter', '12 images + 1 short video / chapter', '3 Quiet Editor moments / month', 'Room wall, Orbit, and Walk · 3 room lights'] },
+  { code: 'memory', name: 'Memory', price: '$5', cadence: 'per month · $48/year', features: ['12 chapters', '60 images + 3 short videos / chapter', '30 Quiet Editor moments / month', 'All room lights + 3 ambient finishes'] },
+  { code: 'studio', name: 'Studio', price: '$12', cadence: 'per month · $108/year', features: ['50 chapters', '120 images + 8 short videos / chapter', '150 Quiet Editor moments / month', 'All room lights + custom background image + all finishes'] },
+]
+
+const studioAddons = [
+  ['studio-chapter', '+1 chapter', '$5', 'Studio only · opens one more chapter'],
+  ['studio-images-50', '+50 images / chapter', '$3', 'Studio only · added to every chapter'],
+  ['studio-videos-15', '+15 short videos / chapter', '$2.50', 'Studio only · added to every chapter'],
+  ['studio-editor-100', '+100 Quiet Editor moments', '$1', 'Studio only · added to this month’s allowance'],
 ]
 
 const aiMenu = [
@@ -138,7 +145,7 @@ export function PricingPage() {
   }
   return <Page><main className="account-page page-wrap">
     <div className="eyebrow">Pricing</div><h1>Pay for room, not remembrance.</h1>
-    <p className="account-copy">Every tier can return to saved chapters without a meter running. One deliberate Quiet Editor request uses one included request, regardless of which editor action you choose. Add-ons are permanent chapter finishes.</p>
+    <p className="account-copy">Every tier can return to saved chapters without a meter running. One deliberate Quiet Editor request uses one included request, regardless of which editor action you choose. The Studio capacity add-ons below are optional, clearly scoped, and never required to look back.</p>
     <div className="pricing-grid">{tiers.map((tier) => <section className={`account-card ${tier.code === 'memory' ? 'featured-card' : ''}`} key={tier.code}>
       <span className="card-label">{tier.name}</span><h2 className="price-line">{tier.price} <small>{tier.cadence}</small></h2>
       <ul className="feature-list">{tier.features.map((feature) => <li key={feature}>{feature}</li>)}<li>Metadata cleansing included</li></ul>
@@ -152,10 +159,12 @@ export function PricingPage() {
         <article><strong>Premiere Night · $3.99</strong><span>Cinema lighting and title sequence.</span></article>
       </div>
     </section>
+    <section className="price-section"><div className="eyebrow">Studio capacity, only when needed</div><h2>More room without a surprise meter.</h2>
+      <div className="addon-grid studio-addon-grid">{studioAddons.map(([code, name, price, copy]) => <article key={code}><strong>{name}</strong><span>{copy}</span><small className="addon-context">{price} one time</small><button type="button" className="button button-ghost" onClick={() => void checkout(code)}>Buy add-on</button></article>)}</div>
+    </section>
     <section className="price-section"><div className="eyebrow">Quiet Editor menu</div><h2>Nine choices, called only when you ask.</h2>
-      <p className="account-copy">Included monthly moments are used first. Optional overage is shown before a call; bundles avoid making every creative step feel like a tollbooth.</p>
+      <p className="account-copy">One deliberate Quiet Editor action uses one included monthly request, regardless of which action you choose.</p>
       <div className="ai-menu">{aiMenu.map(([name, kind]) => <div key={name}><strong>{name}</strong><span>{kind}</span><em>1 request</em></div>)}</div>
-      <p className="account-copy">Overage bundles: 10 moments for $1.49 or 30 for $3.49. Complex multi-image actions consume the displayed equivalent before confirmation.</p>
     </section>
     {notice && <p className="notice">{notice}</p>}
   </main></Page>
@@ -171,7 +180,7 @@ export function AboutPage() {
       <article><span>03</span><h2>Ask only when useful</h2><p>The Quiet Editor helps with captions, order, mood, accessibility, or narration after explicit consent.</p></article>
       <article><span>04</span><h2>Come back freely</h2><p>Subscriptions fund capacity. Permanent finishes fund delight. Looking back is never metered.</p></article>
     </div>
-    <section className="price-section"><div className="eyebrow">How the business works</div><h2>One calm loop, three aligned revenues.</h2><div className="business-lanes"><article><strong>Subscription</strong><p>Storage, video, exports, and included editor allowance.</p></article><article><strong>Permanent finishes</strong><p>One-time atmosphere attached to a chapter, not every viewing.</p></article><article><strong>Optional editor bundles</strong><p>Transparent overage only after included moments run out.</p></article></div></section>
+    <section className="price-section"><div className="eyebrow">How the business works</div><h2>One calm loop, two aligned revenues.</h2><div className="business-lanes"><article><strong>Subscription</strong><p>Storage, video, exports, and included editor requests.</p></article><article><strong>Permanent finishes</strong><p>One-time atmosphere attached to a chapter, not every viewing.</p></article></div></section>
     <Link className="button button-primary" to="/pricing">See exact limits and prices</Link>
   </main></Page>
 }

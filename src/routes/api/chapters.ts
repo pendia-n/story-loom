@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentUser, getDatabase, json, requireCsrf } from '../../lib/server/auth'
-import { getUserTier, PRODUCT_LIMITS } from '../../lib/server/limits'
+import { getUserLimits, getUserTier } from '../../lib/server/limits'
 
 export const Route = createFileRoute('/api/chapters')({
   server: {
@@ -18,8 +18,9 @@ export const Route = createFileRoute('/api/chapters')({
         if (!user) return json({ error: 'Sign in to create a chapter.' }, { status: 401 })
         if (!(await requireCsrf(request))) return json({ error: 'Security check failed. Refresh and try again.' }, { status: 403 })
         const tier = await getUserTier(user.id)
+        const limits = await getUserLimits(user.id, tier)
         const count = await getDatabase().prepare('SELECT COUNT(*) AS count FROM chapters WHERE owner_id = ?1').bind(user.id).first<{ count: number }>()
-        if ((count?.count ?? 0) >= PRODUCT_LIMITS[tier].chapters) return json({ error: `Your ${tier} plan holds ${PRODUCT_LIMITS[tier].chapters} chapter${PRODUCT_LIMITS[tier].chapters === 1 ? '' : 's'}. Existing rooms remain open.` }, { status: 402 })
+        if ((count?.count ?? 0) >= limits.chapters) return json({ error: `Your ${tier} plan holds ${limits.chapters} chapters. Add a Studio chapter slot to open another room.` }, { status: 402 })
         const body = await request.json() as { title?: string; subtitle?: string }
         const title = body.title?.trim().slice(0, 80) || 'A new chapter'
         const subtitle = body.subtitle?.trim().slice(0, 160) || 'A room for the moments worth keeping.'
@@ -28,7 +29,7 @@ export const Route = createFileRoute('/api/chapters')({
         await getDatabase().prepare(
           'INSERT INTO chapters (id, owner_id, title, subtitle, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)',
         ).bind(id, user.id, title, subtitle, now).run()
-        return json({ chapter: { id, title, subtitle, created_at: now, updated_at: now } }, { status: 201 })
+        return json({ chapter: { id, title, subtitle, created_at: now, updated_at: now, background_mode: 'night' } }, { status: 201 })
       },
     },
   },

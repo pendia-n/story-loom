@@ -40,6 +40,7 @@ import { Route as ApiAuthRecoveryResetRouteImport } from './routes/api/auth/reco
 import { Route as ApiAuthRecoveryStartRouteImport } from './routes/api/auth/recovery/start'
 import { Route as ApiAuthRecoveryVerifyRouteImport } from './routes/api/auth/recovery/verify'
 import { Route as ApiAuthRegisterTotpSetupRouteImport } from './routes/api/auth/register/totp-setup'
+import { Route as ApiChaptersChapterIdBackgroundRouteImport } from './routes/api/chapters/$chapterId/background'
 import { Route as ApiSecurityTotpDisableRouteImport } from './routes/api/security/totp/disable'
 import { Route as ApiSecurityTotpEnableRouteImport } from './routes/api/security/totp/enable'
 import { Route as ApiSecurityTotpSetupRouteImport } from './routes/api/security/totp/setup'
@@ -200,6 +201,12 @@ const ApiAuthRegisterTotpSetupRoute =
     path: '/totp-setup',
     getParentRoute: () => ApiAuthRegisterRoute,
   } as any)
+const ApiChaptersChapterIdBackgroundRoute =
+  ApiChaptersChapterIdBackgroundRouteImport.update({
+    id: '/background',
+    path: '/background',
+    getParentRoute: () => ApiChaptersChapterIdRoute,
+  } as any)
 const ApiSecurityTotpDisableRoute = ApiSecurityTotpDisableRouteImport.update({
   id: '/api/security/totp/disable',
   path: '/api/security/totp/disable',
@@ -238,7 +245,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/register': typeof ApiAuthRegisterRouteWithChildren
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/status': typeof ApiBillingStatusRoute
-  '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRoute
+  '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRouteWithChildren
   '/api/media/$mediaId': typeof ApiMediaMediaIdRoute
   '/api/security/password': typeof ApiSecurityPasswordRoute
   '/api/security/questions': typeof ApiSecurityQuestionsRoute
@@ -248,6 +255,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/recovery/start': typeof ApiAuthRecoveryStartRoute
   '/api/auth/recovery/verify': typeof ApiAuthRecoveryVerifyRoute
   '/api/auth/register/totp-setup': typeof ApiAuthRegisterTotpSetupRoute
+  '/api/chapters/$chapterId/background': typeof ApiChaptersChapterIdBackgroundRoute
   '/api/security/totp/disable': typeof ApiSecurityTotpDisableRoute
   '/api/security/totp/enable': typeof ApiSecurityTotpEnableRoute
   '/api/security/totp/setup': typeof ApiSecurityTotpSetupRoute
@@ -274,7 +282,7 @@ export interface FileRoutesByTo {
   '/api/auth/register': typeof ApiAuthRegisterRouteWithChildren
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/status': typeof ApiBillingStatusRoute
-  '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRoute
+  '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRouteWithChildren
   '/api/media/$mediaId': typeof ApiMediaMediaIdRoute
   '/api/security/password': typeof ApiSecurityPasswordRoute
   '/api/security/questions': typeof ApiSecurityQuestionsRoute
@@ -284,6 +292,7 @@ export interface FileRoutesByTo {
   '/api/auth/recovery/start': typeof ApiAuthRecoveryStartRoute
   '/api/auth/recovery/verify': typeof ApiAuthRecoveryVerifyRoute
   '/api/auth/register/totp-setup': typeof ApiAuthRegisterTotpSetupRoute
+  '/api/chapters/$chapterId/background': typeof ApiChaptersChapterIdBackgroundRoute
   '/api/security/totp/disable': typeof ApiSecurityTotpDisableRoute
   '/api/security/totp/enable': typeof ApiSecurityTotpEnableRoute
   '/api/security/totp/setup': typeof ApiSecurityTotpSetupRoute
@@ -311,7 +320,7 @@ export interface FileRoutesById {
   '/api/auth/register': typeof ApiAuthRegisterRouteWithChildren
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/status': typeof ApiBillingStatusRoute
-  '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRoute
+  '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRouteWithChildren
   '/api/media/$mediaId': typeof ApiMediaMediaIdRoute
   '/api/security/password': typeof ApiSecurityPasswordRoute
   '/api/security/questions': typeof ApiSecurityQuestionsRoute
@@ -321,6 +330,7 @@ export interface FileRoutesById {
   '/api/auth/recovery/start': typeof ApiAuthRecoveryStartRoute
   '/api/auth/recovery/verify': typeof ApiAuthRecoveryVerifyRoute
   '/api/auth/register/totp-setup': typeof ApiAuthRegisterTotpSetupRoute
+  '/api/chapters/$chapterId/background': typeof ApiChaptersChapterIdBackgroundRoute
   '/api/security/totp/disable': typeof ApiSecurityTotpDisableRoute
   '/api/security/totp/enable': typeof ApiSecurityTotpEnableRoute
   '/api/security/totp/setup': typeof ApiSecurityTotpSetupRoute
@@ -359,6 +369,7 @@ export interface FileRouteTypes {
     | '/api/auth/recovery/start'
     | '/api/auth/recovery/verify'
     | '/api/auth/register/totp-setup'
+    | '/api/chapters/$chapterId/background'
     | '/api/security/totp/disable'
     | '/api/security/totp/enable'
     | '/api/security/totp/setup'
@@ -395,6 +406,7 @@ export interface FileRouteTypes {
     | '/api/auth/recovery/start'
     | '/api/auth/recovery/verify'
     | '/api/auth/register/totp-setup'
+    | '/api/chapters/$chapterId/background'
     | '/api/security/totp/disable'
     | '/api/security/totp/enable'
     | '/api/security/totp/setup'
@@ -431,6 +443,7 @@ export interface FileRouteTypes {
     | '/api/auth/recovery/start'
     | '/api/auth/recovery/verify'
     | '/api/auth/register/totp-setup'
+    | '/api/chapters/$chapterId/background'
     | '/api/security/totp/disable'
     | '/api/security/totp/enable'
     | '/api/security/totp/setup'
@@ -689,6 +702,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthRegisterTotpSetupRouteImport
       parentRoute: typeof ApiAuthRegisterRoute
     }
+    '/api/chapters/$chapterId/background': {
+      id: '/api/chapters/$chapterId/background'
+      path: '/background'
+      fullPath: '/api/chapters/$chapterId/background'
+      preLoaderRoute: typeof ApiChaptersChapterIdBackgroundRouteImport
+      parentRoute: typeof ApiChaptersChapterIdRoute
+    }
     '/api/security/totp/disable': {
       id: '/api/security/totp/disable'
       path: '/api/security/totp/disable'
@@ -713,12 +733,23 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ApiChaptersChapterIdRouteChildren {
+  ApiChaptersChapterIdBackgroundRoute: typeof ApiChaptersChapterIdBackgroundRoute
+}
+
+const ApiChaptersChapterIdRouteChildren: ApiChaptersChapterIdRouteChildren = {
+  ApiChaptersChapterIdBackgroundRoute: ApiChaptersChapterIdBackgroundRoute,
+}
+
+const ApiChaptersChapterIdRouteWithChildren =
+  ApiChaptersChapterIdRoute._addFileChildren(ApiChaptersChapterIdRouteChildren)
+
 interface ApiChaptersRouteChildren {
-  ApiChaptersChapterIdRoute: typeof ApiChaptersChapterIdRoute
+  ApiChaptersChapterIdRoute: typeof ApiChaptersChapterIdRouteWithChildren
 }
 
 const ApiChaptersRouteChildren: ApiChaptersRouteChildren = {
-  ApiChaptersChapterIdRoute: ApiChaptersChapterIdRoute,
+  ApiChaptersChapterIdRoute: ApiChaptersChapterIdRouteWithChildren,
 }
 
 const ApiChaptersRouteWithChildren = ApiChaptersRoute._addFileChildren(

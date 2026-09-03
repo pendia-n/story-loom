@@ -9,13 +9,14 @@ export const Route = createFileRoute('/api/chapters/$chapterId')({
         if (!user) return json({ error: 'Sign in to open this chapter.' }, { status: 401 })
         const db = getDatabase()
         const chapter = await db.prepare(
-          'SELECT id, title, subtitle, created_at, updated_at FROM chapters WHERE id = ?1 AND owner_id = ?2',
+          'SELECT id, title, subtitle, background_mode, background_object_key, created_at, updated_at FROM chapters WHERE id = ?1 AND owner_id = ?2',
         ).bind(params.chapterId, user.id).first()
         if (!chapter) return json({ error: 'Chapter not found.' }, { status: 404 })
         const media = await db.prepare(
-          'SELECT id, object_key, filename, content_type, byte_size, caption, sort_order, created_at FROM media WHERE chapter_id = ?1 AND owner_id = ?2 ORDER BY sort_order ASC, created_at ASC',
+          'SELECT id, object_key, filename, content_type, byte_size, caption, sort_order, duration_seconds, created_at FROM media WHERE chapter_id = ?1 AND owner_id = ?2 ORDER BY sort_order ASC, created_at ASC',
         ).bind(params.chapterId, user.id).all()
-        return json({ chapter, media: media.results.map((item) => ({ ...item, url: `/api/media/${item.id}` })) })
+        const finishes = await db.prepare("SELECT product_code FROM purchases WHERE chapter_id = ?1 AND status = 'paid' AND product_code IN ('golden-hour', 'rain-window', 'stardust-ceiling', 'premiere-night')").bind(params.chapterId).all<{ product_code: string }>()
+        return json({ chapter: { ...chapter, background_url: chapter.background_object_key ? `/api/chapters/${params.chapterId}/background` : null, finishes: finishes.results.map((item) => item.product_code) }, media: media.results.map((item) => ({ ...item, url: `/api/media/${item.id}` })) })
       },
       DELETE: async ({ request, params }) => {
         const user = await getCurrentUser(request)

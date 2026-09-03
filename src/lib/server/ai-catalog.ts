@@ -15,9 +15,9 @@ export const AI_CATALOG: Record<AiKind, { profile: Profile; maxTokens: number; s
 }
 
 export const TIER_MODELS: Record<AiTier, readonly [string, string, string]> = {
-  free: ['thinkingmachines/inkling-small', 'z-ai/glm-5.3-flash', 'google/gemini-3.5-flash-lite'],
-  memory: ['meta/muse-spark-1.2-contributor', 'deepseek/deepseek-v4-flash-vision-exp', 'qwen/qwen3.8-flash'],
-  studio: ['openai/gpt-5.6-luna', 'x-ai/grok-build-0.1', 'anthropic/claude-sonnet-4.6:batch'],
+  free: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash-lite', 'anthropic/claude-3-haiku'],
+  memory: ['google/gemini-2.5-flash', 'qwen/qwen3.5-flash-02-23', 'anthropic/claude-3-haiku'],
+  studio: ['openai/gpt-4o', 'google/gemini-2.5-pro', 'anthropic/claude-3-5-haiku'],
 }
 
 export function modelRoute(tier: AiTier) {
@@ -25,3 +25,11 @@ export function modelRoute(tier: AiTier) {
 }
 
 export const monthlyRequestAllowance: Record<AiTier, number> = { free: 3, memory: 30, studio: 150 }
+
+export async function monthlyAllowanceWithAddons(db: D1Database, userId: string, tier: AiTier) {
+  if (tier !== 'studio') return monthlyRequestAllowance[tier]
+  const row = await db.prepare(
+    "SELECT COUNT(*) AS count FROM purchases WHERE user_id = ?1 AND product_code = 'studio-editor-100' AND status = 'paid'",
+  ).bind(userId).first<{ count: number }>()
+  return monthlyRequestAllowance[tier] + (row?.count ?? 0) * 100
+}

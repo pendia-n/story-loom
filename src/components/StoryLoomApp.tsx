@@ -6,6 +6,7 @@ import AppHeader from './AppHeader'
 import { SECURITY_QUESTIONS } from '../lib/security-questions'
 
 type ViewMode = 'room' | 'float' | 'walk'
+type BackgroundMode = 'morning' | 'night' | 'twilight' | 'afternoon' | 'sunrise'
 
 let THREE: typeof Three
 
@@ -25,6 +26,9 @@ type Chapter = {
   subtitle: string
   created_at?: string
   updated_at?: string
+  background_mode?: BackgroundMode
+  background_url?: string | null
+  finishes?: string[]
 }
 
 type User = { id: string; username: string }
@@ -37,6 +41,25 @@ const demoPhotos: Photo[] = [
   { id: 'demo-5', title: 'A window left open', caption: 'For the future to find its way in.' },
   { id: 'demo-6', title: 'The long way home', caption: 'Worth taking slowly.' },
 ]
+
+const backgroundLabels: Record<BackgroundMode, string> = { morning: 'Morning', night: 'Night', twilight: 'Twilight', afternoon: 'After noon', sunrise: 'Sun rise' }
+const backgroundColors: Record<BackgroundMode, [string, string, string]> = {
+  morning: ['#c8d5cf', '#ead9bb', '#fff4dd'], night: ['#030b09', '#0b1c16', '#183a2e'],
+  twilight: ['#c47d68', '#4c5260', '#172a35'], afternoon: ['#fffefa', '#f2f1ec', '#dbe4e4'], sunrise: ['#101c38', '#435675', '#a27f78'],
+}
+
+function atmosphereTexture(mode: BackgroundMode) {
+  const canvas = document.createElement('canvas'); canvas.width = 900; canvas.height = 600
+  const context = canvas.getContext('2d')
+  if (!context) return new THREE.CanvasTexture(canvas)
+  const colors = backgroundColors[mode]; const gradient = context.createLinearGradient(0, 0, 0, canvas.height)
+  gradient.addColorStop(0, colors[0]); gradient.addColorStop(.52, colors[1]); gradient.addColorStop(1, colors[2])
+  context.fillStyle = gradient; context.fillRect(0, 0, canvas.width, canvas.height)
+  const glow = context.createRadialGradient(mode === 'sunrise' ? 160 : 690, 120, 10, mode === 'sunrise' ? 160 : 690, 120, 330)
+  glow.addColorStop(0, mode === 'night' ? 'rgba(91,145,117,.18)' : 'rgba(255,238,190,.34)'); glow.addColorStop(1, 'transparent')
+  context.fillStyle = glow; context.fillRect(0, 0, canvas.width, canvas.height)
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace; return texture
+}
 
 const chapterFinishes = [
   ['golden-hour', 'Golden Hour', '$1.99', 'Warm moving light and dust.'],
@@ -87,6 +110,9 @@ function artworkTexture(photo: Photo, index: number) {
 type GalleryCanvasProps = {
   photos: Photo[]
   mode: ViewMode
+  backgroundMode: BackgroundMode
+  backgroundUrl?: string | null
+  finishes?: string[]
   selectedId: string | null
   onSelect: (id: string) => void
 }
@@ -135,7 +161,7 @@ function GalleryCanvas(props: GalleryCanvasProps) {
   </div>
 }
 
-function GalleryCanvasReady({ photos, mode, selectedId, onSelect, onFailure }: GalleryCanvasProps & { onFailure: () => void }) {
+function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finishes = [], selectedId, onSelect, onFailure }: GalleryCanvasProps & { onFailure: () => void }) {
   const mountRef = useRef<HTMLDivElement>(null)
   const selectionRef = useRef(selectedId)
   selectionRef.current = selectedId
@@ -144,8 +170,9 @@ function GalleryCanvasReady({ photos, mode, selectedId, onSelect, onFailure }: G
     const mount = mountRef.current
     if (!mount) return
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#091b17')
-    scene.fog = new THREE.Fog('#091b17', 10, 30)
+    const atmosphereColors = backgroundColors[backgroundMode]
+    scene.background = new THREE.Color(atmosphereColors[2])
+    scene.fog = new THREE.Fog(atmosphereColors[2], 10, 30)
     const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 100)
     camera.position.set(0, 2.15, 8.7)
     camera.lookAt(0, 2, 0)
@@ -161,6 +188,25 @@ function GalleryCanvasReady({ photos, mode, selectedId, onSelect, onFailure }: G
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.08
     mount.appendChild(renderer.domElement)
+
+    const textureLoader = new THREE.TextureLoader()
+    const ownedTextures = new Set<Three.Texture>()
+    const atmosphere = atmosphereTexture(backgroundMode)
+    ownedTextures.add(atmosphere)
+    const atmosphereDome = new THREE.Mesh(
+      new THREE.SphereGeometry(45, 48, 32),
+      new THREE.MeshBasicMaterial({ map: atmosphere, side: THREE.BackSide, depthWrite: false }),
+    )
+    scene.add(atmosphereDome)
+    if (backgroundUrl) {
+      textureLoader.load(backgroundUrl, (loaded) => {
+        loaded.colorSpace = THREE.SRGBColorSpace
+        ownedTextures.add(loaded)
+        ;(atmosphereDome.material as Three.MeshBasicMaterial).map = loaded
+        ;(atmosphereDome.material as Three.MeshBasicMaterial).needsUpdate = true
+        atmosphere.dispose()
+      })
+    }
 
     const room = new THREE.Group()
     scene.add(room)
@@ -192,19 +238,60 @@ function GalleryCanvasReady({ photos, mode, selectedId, onSelect, onFailure }: G
         room.add(wall)
       }
     }
-    scene.add(new THREE.HemisphereLight('#f2d5a0', '#0b211c', 1.55))
-    const keyLight = new THREE.PointLight('#f6c989', 35, 22, 2)
+    const lightColors: Record<BackgroundMode, [string, string]> = {
+      morning: ['#fff1d0', '#47766d'], night: ['#b9d6c7', '#0b211c'],
+      twilight: ['#ffd0a7', '#3b4d68'], afternoon: ['#ffffff', '#789999'], sunrise: ['#c7d9ff', '#18264b'],
+    }
+    scene.add(new THREE.HemisphereLight(lightColors[backgroundMode][0], lightColors[backgroundMode][1], backgroundMode === 'night' ? 1.45 : 1.75))
+    const keyLight = new THREE.PointLight(lightColors[backgroundMode][0], backgroundMode === 'night' ? 35 : 44, 22, 2)
     keyLight.position.set(0, 8, 2)
     scene.add(keyLight)
-    const fillLight = new THREE.PointLight('#6db8b2', 18, 18, 2)
+    const fillLight = new THREE.PointLight(lightColors[backgroundMode][1], 18, 18, 2)
     fillLight.position.set(-6, 3, 3)
     scene.add(fillLight)
+
+    let rainDrops: Three.Points | null = null
+    let stars: Three.Points | null = null
+    if (finishes.includes('golden-hour')) {
+      const goldenLight = new THREE.PointLight('#ffb45f', 28, 16, 2)
+      goldenLight.position.set(-5, 4, 4)
+      scene.add(goldenLight)
+      renderer.toneMappingExposure = 1.2
+    }
+    if (finishes.includes('premiere-night')) {
+      const premiereLight = new THREE.SpotLight('#e7c5ff', 40, 24, Math.PI / 5, 0.45, 1.4)
+      premiereLight.position.set(0, 9, 1)
+      premiereLight.target.position.set(0, 0, -4)
+      scene.add(premiereLight, premiereLight.target)
+    }
+    if (finishes.includes('rain-window')) {
+      const positions = new Float32Array(180 * 3)
+      for (let index = 0; index < 180; index += 1) {
+        positions[index * 3] = (Math.random() - 0.5) * 22
+        positions[index * 3 + 1] = Math.random() * 10
+        positions[index * 3 + 2] = -2 - Math.random() * 18
+      }
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      rainDrops = new THREE.Points(geometry, new THREE.PointsMaterial({ color: '#b7d9dc', size: 0.055, transparent: true, opacity: 0.42 }))
+      scene.add(rainDrops)
+    }
+    if (finishes.includes('stardust-ceiling')) {
+      const positions = new Float32Array(140 * 3)
+      for (let index = 0; index < 140; index += 1) {
+        positions[index * 3] = (Math.random() - 0.5) * 20
+        positions[index * 3 + 1] = 6.5 + Math.random() * 4
+        positions[index * 3 + 2] = (Math.random() - 0.5) * 24
+      }
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      stars = new THREE.Points(geometry, new THREE.PointsMaterial({ color: '#fff0bd', size: 0.08, transparent: true, opacity: 0.76 }))
+      scene.add(stars)
+    }
 
     const galleryGroup = new THREE.Group()
     room.add(galleryGroup)
     const interactive: Three.Object3D[] = []
-    const textureLoader = new THREE.TextureLoader()
-    const ownedTextures = new Set<Three.Texture>()
     const videos: HTMLVideoElement[] = []
     const videoById = new Map<string, HTMLVideoElement>()
     photos.forEach((photo, index) => {
@@ -336,6 +423,15 @@ function GalleryCanvasReady({ photos, mode, selectedId, onSelect, onFailure }: G
     resize()
     const animate = () => {
       const elapsed = (performance.now() - startedAt) / 1000
+      if (rainDrops) {
+        const positions = rainDrops.geometry.getAttribute('position') as Three.BufferAttribute
+        for (let index = 0; index < positions.count; index += 1) {
+          const nextY = positions.getY(index) - 0.075
+          positions.setY(index, nextY < 0 ? 10 : nextY)
+        }
+        positions.needsUpdate = true
+      }
+      if (stars) (stars.material as Three.PointsMaterial).opacity = 0.62 + Math.sin(elapsed * 1.7) * 0.18
       if (mode === 'float') galleryGroup.rotation.y = elapsed * 0.075
       if (mode === 'walk') {
         const speed = 0.055
@@ -388,7 +484,7 @@ function GalleryCanvasReady({ photos, mode, selectedId, onSelect, onFailure }: G
         }
       })
     }
-  }, [mode, onFailure, onSelect, photos])
+  }, [backgroundMode, backgroundUrl, finishes, mode, onFailure, onSelect, photos])
 
   return <div className="gallery-canvas" ref={mountRef} aria-label="Interactive three-dimensional gallery" />
 }
@@ -498,14 +594,20 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   const [chapterSubtitle, setChapterSubtitle] = useState('')
   const [cleanMetadata, setCleanMetadata] = useState(true)
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(demoPhotos[0] ?? null)
+  const [tier, setTier] = useState<'free' | 'memory' | 'studio'>('free')
+  const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('night')
+  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null)
+  const [finishes, setFinishes] = useState<string[]>([])
   const uploadRef = useRef<HTMLInputElement>(null)
+  const backgroundRef = useRef<HTMLInputElement>(null)
   const activeModeLabel = useMemo(() => ({ room: 'Curated wall', float: 'Slow orbit', walk: 'First-person walk' }[mode]), [mode])
+  const allowedBackgroundModes = useMemo<BackgroundMode[]>(() => tier === 'free' ? ['morning', 'night', 'afternoon'] : ['morning', 'night', 'twilight', 'afternoon', 'sunrise'], [tier])
 
   useEffect(() => {
     void fetch('/api/auth/me').then(async (response) => {
       if (!response.ok) return
       const result = await response.json() as { user?: User | null }
-      if (result.user) { setUser(result.user); await loadChapters() }
+      if (result.user) { setUser(result.user); await Promise.all([loadChapters(), loadTier()]) }
     }).catch(() => undefined)
   }, [])
 
@@ -517,6 +619,9 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
       if (!result.chapter) return
       const loaded = (result.media ?? []).map((item) => ({ id: item.id, title: item.filename, caption: item.content_type === 'video/mp4' ? 'A moving moment from this chapter.' : 'A moment from this chapter.', url: item.url, contentType: item.content_type, durationSeconds: item.duration_seconds }))
       setActiveChapter(result.chapter)
+      setBackgroundMode(result.chapter.background_mode ?? 'night')
+      setBackgroundUrl(result.chapter.background_url ?? null)
+      setFinishes(result.chapter.finishes ?? [])
       setPhotos(loaded.length ? loaded : [{ id: 'empty', title: 'A room waiting for a moment', caption: 'Add a photo to begin.' }])
       setSelectedId(loaded[0]?.id ?? 'empty')
       setSelectedPhoto(loaded[0] ?? null)
@@ -530,6 +635,14 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     setChapters(result.chapters ?? [])
   }
 
+  async function loadTier() {
+    const response = await fetch('/api/billing/status')
+    if (!response.ok) return
+    const result = await response.json() as { subscription?: { tier?: string } }
+    const next = result.subscription?.tier
+    setTier(next === 'studio' || next === 'memory' ? next : 'free')
+  }
+
   async function openChapter(chapter: Chapter) {
     setLoading(true); setNotice('')
     const response = await fetch(`/api/chapters/${chapter.id}`)
@@ -537,7 +650,7 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     setLoading(false)
     if (!response.ok || !result.chapter) { setNotice('That room could not be opened.'); return }
     const loaded = (result.media ?? []).map((item) => ({ id: item.id, title: item.filename, caption: item.content_type === 'video/mp4' ? 'A moving moment from this chapter.' : 'A moment from this chapter.', url: item.url, contentType: item.content_type, durationSeconds: item.duration_seconds }))
-    setActiveChapter(result.chapter); setPhotos(loaded.length ? loaded : [{ id: 'empty', title: 'A room waiting for a moment', caption: 'Add a photo to begin.' }]); setSelectedId(loaded[0]?.id ?? 'empty'); setSelectedPhoto(loaded[0] ?? null)
+    setActiveChapter(result.chapter); setBackgroundMode(result.chapter.background_mode ?? 'night'); setBackgroundUrl(result.chapter.background_url ?? null); setFinishes(result.chapter.finishes ?? []); setPhotos(loaded.length ? loaded : [{ id: 'empty', title: 'A room waiting for a moment', caption: 'Add a photo to begin.' }]); setSelectedId(loaded[0]?.id ?? 'empty'); setSelectedPhoto(loaded[0] ?? null)
   }
 
   async function createChapter(event: React.FormEvent) {
@@ -571,12 +684,42 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     else setNotice(result.error ?? 'Checkout is not ready yet.')
   }
 
-  async function signOut() { await fetch('/api/auth/logout', { method: 'POST', headers: csrfHeaders() }); setUser(null); setChapters([]); setActiveChapter(null); setPhotos(demoPhotos); setSelectedId(demoPhotos[0]?.id ?? null); setNotice('Back to the little demo room.') }
+  async function changeBackgroundMode(next: BackgroundMode) {
+    if (!allowedBackgroundModes.includes(next)) return
+    const previous = backgroundMode
+    setBackgroundMode(next)
+    if (!activeChapter || !user) return
+    const response = await fetch(`/api/chapters/${activeChapter.id}/background`, { method: 'PUT', headers: { 'content-type': 'application/json', ...csrfHeaders() }, body: JSON.stringify({ mode: next }) })
+    if (!response.ok) { setBackgroundMode(previous); const result = await response.json() as { error?: string }; setNotice(result.error ?? 'That atmosphere could not be saved.') }
+  }
+
+  async function uploadBackground(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file || !activeChapter || tier !== 'studio') return
+    setLoading(true); setNotice('')
+    const form = new FormData(); form.set('file', file)
+    const response = await fetch(`/api/chapters/${activeChapter.id}/background`, { method: 'POST', headers: csrfHeaders(), body: form })
+    const result = await response.json() as { url?: string; error?: string }
+    setLoading(false); event.target.value = ''
+    if (!response.ok || !result.url) { setNotice(result.error ?? 'That background could not be placed.'); return }
+    setBackgroundUrl(result.url); setNotice('Background replaced. The previous image was removed.')
+  }
+
+  async function clearBackground() {
+    if (!activeChapter) return
+    setLoading(true)
+    const response = await fetch(`/api/chapters/${activeChapter.id}/background`, { method: 'DELETE', headers: csrfHeaders() })
+    setLoading(false)
+    if (!response.ok) { setNotice('That background could not be removed.'); return }
+    setBackgroundUrl(null); setBackgroundMode('night')
+  }
+
+  async function signOut() { await fetch('/api/auth/logout', { method: 'POST', headers: csrfHeaders() }); setUser(null); setTier('free'); setChapters([]); setActiveChapter(null); setBackgroundMode('night'); setBackgroundUrl(null); setFinishes([]); setPhotos(demoPhotos); setSelectedId(demoPhotos[0]?.id ?? null); setNotice('Back to the little demo room.') }
 
   const selectedPhotoChanged = useCallback((id: string) => { setSelectedId(id); setSelectedPhoto(photos.find((photo) => photo.id === id) ?? null) }, [photos])
 
   return <div className="loom-app">
-    {showAuth && <AuthModal onClose={() => setShowAuth(false)} onAuthed={(nextUser) => { setUser(nextUser); void loadChapters() }} />}
+    {showAuth && <AuthModal onClose={() => setShowAuth(false)} onAuthed={(nextUser) => { setUser(nextUser); void Promise.all([loadChapters(), loadTier()]) }} />}
     {showCreate && <Modal onClose={() => setShowCreate(false)}>
       <div className="modal-eyebrow">New chapter</div><h2>Give the room a feeling</h2><p className="modal-copy">A simple title is enough. You can let the photos do the remembering.</p>
       <form onSubmit={createChapter} className="stack-form"><label>Chapter title<input value={chapterTitle} onChange={(event) => setChapterTitle(event.target.value)} placeholder="A weekend by the sea" required /></label><label>Small note<input value={chapterSubtitle} onChange={(event) => setChapterSubtitle(event.target.value)} placeholder="The kind of day I want to keep" /></label><button className="button button-primary" disabled={loading}>{loading ? 'Making room…' : 'Create chapter'}</button></form>
@@ -596,8 +739,8 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
 
       <section id="room" className="room-section page-wrap">
         <div className="room-heading"><div><div className="eyebrow">The room is open</div><h2>{activeChapter?.title ?? 'A little light from the way home'}</h2><p>{activeChapter?.subtitle ?? 'A demo chapter, made for wandering.'}</p></div><div className="room-meta"><span>{photos.length} scenes</span><span className="meta-divider">·</span><span>{activeModeLabel}</span></div></div>
-        <div className="room-stage"><GalleryCanvas photos={photos} mode={mode} selectedId={selectedId} onSelect={selectedPhotoChanged} /><div className="stage-glow" /><div className="stage-caption"><span className="caption-line" /> <span>{mode === 'walk' ? 'WASD / arrows to walk · drag to look' : 'Select a frame to linger'}</span></div></div>
-        <div className="room-controls"><div><div className="mode-switch" aria-label="Gallery view mode">{(['room', 'float', 'walk'] as ViewMode[]).map((item) => <button type="button" key={item} className={mode === item ? 'is-active' : ''} onClick={() => setMode(item)}>{item === 'room' ? 'Room wall' : item === 'float' ? 'Orbit' : 'Walk inside'}</button>)}</div><p className="mode-help">{mode === 'room' ? 'See the whole chapter as a composed exhibition wall.' : mode === 'float' ? 'Let memories circle slowly in a weightless constellation.' : 'Move through a corridor with WASD or arrow keys; drag to look around.'}</p></div><div className="room-tools">{activeChapter && <><label className="clean-toggle"><input type="checkbox" checked={cleanMetadata} onChange={(event) => setCleanMetadata(event.target.checked)} /> Clean image metadata</label><input ref={uploadRef} type="file" accept=".png,.webp,.gif,.mp4,image/png,image/webp,image/gif,video/mp4" multiple hidden onChange={(event) => void uploadFiles(event)} /><button type="button" className="button button-cream" onClick={() => uploadRef.current?.click()} disabled={loading}>{loading ? 'Placing…' : '+ Add memories'}</button><button type="button" className="button button-ghost" onClick={() => setShowFinishes(true)}>Add atmosphere</button></>}{notice && <span className="notice">{notice}</span>}</div></div>
+        <div className="room-stage"><GalleryCanvas photos={photos} mode={mode} backgroundMode={backgroundMode} backgroundUrl={backgroundUrl} finishes={finishes} selectedId={selectedId} onSelect={selectedPhotoChanged} /><div className="stage-glow" /><div className="stage-caption"><span className="caption-line" /> <span>{mode === 'walk' ? 'WASD / arrows to walk · drag to look' : 'Select a frame to linger'}</span></div></div>
+        <div className="room-controls"><div><div className="mode-switch" aria-label="Gallery view mode">{(['room', 'float', 'walk'] as ViewMode[]).map((item) => <button type="button" key={item} className={mode === item ? 'is-active' : ''} onClick={() => setMode(item)}>{item === 'room' ? 'Room wall' : item === 'float' ? 'Orbit' : 'Walk inside'}</button>)}</div><p className="mode-help">{mode === 'room' ? 'See the whole chapter as a composed exhibition wall.' : mode === 'float' ? 'Let memories circle slowly in a weightless constellation.' : 'Move through a corridor with WASD or arrow keys; drag to look around.'}</p></div><div className="room-tools">{activeChapter && <><div className="atmosphere-controls"><label>Room light<select value={backgroundMode} onChange={(event) => void changeBackgroundMode(event.target.value as BackgroundMode)}>{allowedBackgroundModes.map((item) => <option key={item} value={item}>{backgroundLabels[item]}</option>)}</select></label>{tier === 'studio' && <><input ref={backgroundRef} type="file" accept=".png,.webp,.gif,image/png,image/webp,image/gif" hidden onChange={(event) => void uploadBackground(event)} /><button type="button" className="button button-ghost" onClick={() => backgroundRef.current?.click()} disabled={loading}>{backgroundUrl ? 'Replace room image' : 'Use room image'}</button>{backgroundUrl && <button type="button" className="text-button" onClick={() => void clearBackground()} disabled={loading}>Use gradient</button>}</>}</div><label className="clean-toggle"><input type="checkbox" checked={cleanMetadata} onChange={(event) => setCleanMetadata(event.target.checked)} /> Clean image metadata</label><input ref={uploadRef} type="file" accept=".png,.webp,.gif,.mp4,image/png,image/webp,image/gif,video/mp4" multiple hidden onChange={(event) => void uploadFiles(event)} /><button type="button" className="button button-cream" onClick={() => uploadRef.current?.click()} disabled={loading}>{loading ? 'Placing…' : '+ Add memories'}</button><button type="button" className="button button-ghost" onClick={() => setShowFinishes(true)}>Add atmosphere</button></>}{notice && <span className="notice">{notice}</span>}</div></div>
       </section>
 
       <section className="story-section page-wrap"><div className="story-intro"><div className="eyebrow">One room, many ways back</div><h2>A gallery that waits<br />for your next mood.</h2></div><div className="story-grid"><article><span className="story-number">01</span><h3>Collect gently</h3><p>Drop in a few photos. Story Loom makes the room, the rhythm, and the little pause between each scene.</p></article><article><span className="story-number">02</span><h3>Wander slowly</h3><p>Choose a calm orbit or walk the walls. The gallery is made to be visited, not completed.</p></article><article><span className="story-number">03</span><h3>Keep it yours</h3><p>Your chapters live behind your account. There is no public feed asking you to perform your memories.</p></article></div></section>

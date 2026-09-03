@@ -137,6 +137,13 @@ export function cleanseImageMetadata(bytes: Uint8Array, contentType: string) {
   return result ?? { bytes, cleaned: false }
 }
 
+export function isLikelyImage(bytes: Uint8Array, contentType: string) {
+  if (contentType === 'image/png') return startsWith(bytes, [137, 80, 78, 71, 13, 10, 26, 10])
+  if (contentType === 'image/webp') return bytes.length >= 12 && ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 4) === 'WEBP'
+  if (contentType === 'image/gif') return bytes.length >= 6 && ['GIF87a', 'GIF89a'].includes(ascii(bytes, 0, 6))
+  return false
+}
+
 export function isLikelyMp4(bytes: Uint8Array) {
   return bytes.length >= 12 && ascii(bytes, 4, 4) === 'ftyp'
 }

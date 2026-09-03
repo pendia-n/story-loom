@@ -98,6 +98,10 @@ a { color: inherit; }
 .mode-switch button:hover, .mode-switch button.is-active { color: var(--night); background: var(--gold); }
 .mode-help { max-width: 520px; margin: 10px 0 0; color: var(--ink-muted); font-size: 11px; line-height: 1.5; }
 .room-tools { display: flex; align-items: center; gap: 16px; }
+.atmosphere-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.atmosphere-controls label { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-muted); font-size: 11px; }
+.atmosphere-controls select { border: 1px solid var(--line); border-radius: 3px; padding: 9px 28px 9px 10px; color: var(--ink); background: var(--glass); font: inherit; }
+.text-button { border: 0; padding: 5px 0; color: var(--gold); background: transparent; font-size: 11px; cursor: pointer; }
 .notice { color: #e5a07f; font-size: 12px; }
 .story-section { display: grid; grid-template-columns: .8fr 1.2fr; gap: 80px; padding: 64px 0 130px; border-top: 1px solid var(--line); }
 .story-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
@@ -187,7 +191,7 @@ a { color: inherit; }
 .mechanism-flow span { color: var(--gold); font-size: 10px; letter-spacing: .12em; }
 .mechanism-flow h2 { margin: 18px 0 12px; color: var(--cream); font-family: Georgia, serif; font-size: 25px; font-weight: 400; }
 .mechanism-flow p { margin: 0; color: var(--ink-muted); font-size: 12px; line-height: 1.65; }
-.business-lanes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.business-lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .faq-list { max-width: 880px; margin-top: 54px; border-top: 1px solid var(--line); }
 .faq-list details { border-bottom: 1px solid var(--line); }
 .faq-list summary { cursor: pointer; padding: 24px 4px; color: var(--cream); font-family: Georgia, serif; font-size: 23px; }
@@ -242,9 +246,10 @@ html.light .status-dot { box-shadow: 0 0 14px rgba(165,104,63,.6); }
   .room-meta { white-space: normal; }
   .room-stage, .gallery-canvas { width: 100%; max-width: 100%; min-width: 0; min-height: 460px; }
   .room-controls > div:first-child { width: 100%; min-width: 0; }
-  .mode-switch { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-radius: 18px; }
+  .mode-switch { width: calc(100% + 32px); margin-inline: -16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-right: 0; border-left: 0; border-radius: 0; }
   .mode-switch button { min-width: 0; padding-inline: 6px; }
   .room-tools { width: 100%; flex-wrap: wrap; }
+  .atmosphere-controls { width: 100%; }
   .story-section { grid-template-columns: 1fr; gap: 40px; padding: 40px 0 90px; }
   .story-grid { grid-template-columns: 1fr; gap: 30px; }
   .story-grid h3 { margin-top: 20px; }

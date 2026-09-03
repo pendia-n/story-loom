@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentUser, getDatabase, getMediaBucket, json, requireCsrf } from '../../lib/server/auth'
-import { cleanseImageMetadata, isLikelyMp4, mp4DurationSeconds } from '../../lib/server/media'
-import { getUserTier, PRODUCT_LIMITS } from '../../lib/server/limits'
+import { cleanseImageMetadata, isLikelyImage, isLikelyMp4, mp4DurationSeconds } from '../../lib/server/media'
+import { getUserLimits, getUserTier } from '../../lib/server/limits'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024
@@ -30,10 +30,11 @@ export const Route = createFileRoute('/api/media')({
         const chapter = await db.prepare('SELECT id FROM chapters WHERE id = ?1 AND owner_id = ?2').bind(chapterId, user.id).first()
         if (!chapter) return json({ error: 'Chapter not found.' }, { status: 404 })
         const tier = await getUserTier(user.id)
+        const limits = await getUserLimits(user.id, tier)
         const counts = await db.prepare("SELECT SUM(CASE WHEN content_type = 'video/mp4' THEN 1 ELSE 0 END) AS videos, SUM(CASE WHEN content_type <> 'video/mp4' THEN 1 ELSE 0 END) AS images FROM media WHERE chapter_id = ?1 AND owner_id = ?2").bind(chapterId, user.id).first<{ videos: number | null; images: number | null }>()
         const isVideo = file.type === 'video/mp4'
         const used = isVideo ? counts?.videos ?? 0 : counts?.images ?? 0
-        const allowed = isVideo ? PRODUCT_LIMITS[tier].videosPerChapter : PRODUCT_LIMITS[tier].imagesPerChapter
+        const allowed = isVideo ? limits.videosPerChapter : limits.imagesPerChapter
         if (used >= allowed) return json({ error: `This ${tier} chapter already holds its ${allowed} ${isVideo ? 'short videos' : 'images'}. Existing moments remain available.` }, { status: 402 })
 
         const originalBytes = new Uint8Array(await file.arrayBuffer())
@@ -47,10 +48,11 @@ export const Route = createFileRoute('/api/media')({
             return json({ error: 'MP4 clips must be between 1 and 30 seconds.' }, { status: 400 })
           }
         } else if (cleanRequested) {
+          if (!isLikelyImage(originalBytes, file.type)) return json({ error: 'The image bytes do not match PNG, WebP, or GIF.' }, { status: 400 })
           const cleaned = cleanseImageMetadata(originalBytes, file.type)
           storedBytes = cleaned.bytes
           metadataCleaned = cleaned.cleaned ? 1 : 0
-        }
+        } else if (!isLikelyImage(originalBytes, file.type)) return json({ error: 'The image bytes do not match PNG, WebP, or GIF.' }, { status: 400 })
 
         const id = crypto.randomUUID()
         const objectKey = `${user.id}/${chapterId}/${id}`

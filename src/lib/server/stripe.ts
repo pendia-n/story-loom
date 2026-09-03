@@ -1,6 +1,6 @@
 import { getRuntimeEnv } from './auth'
 
-export type CheckoutProduct = 'memory' | 'studio' | 'golden-hour' | 'rain-window' | 'stardust-ceiling' | 'premiere-night' | 'keepsake-export'
+export type CheckoutProduct = 'memory' | 'studio' | 'golden-hour' | 'rain-window' | 'stardust-ceiling' | 'premiere-night' | 'keepsake-export' | 'studio-chapter' | 'studio-images-50' | 'studio-videos-15' | 'studio-editor-100'
 
 const productEnv: Record<CheckoutProduct, keyof ReturnType<typeof getRuntimeEnv>> = {
   memory: 'STRIPE_PRICE_MEMORY',
@@ -10,6 +10,10 @@ const productEnv: Record<CheckoutProduct, keyof ReturnType<typeof getRuntimeEnv>
   'stardust-ceiling': 'STRIPE_PRICE_STARDUST_CEILING',
   'premiere-night': 'STRIPE_PRICE_PREMIERE_NIGHT',
   'keepsake-export': 'STRIPE_PRICE_KEEPSAKE_EXPORT',
+  'studio-chapter': 'STRIPE_PRICE_STUDIO_CHAPTER',
+  'studio-images-50': 'STRIPE_PRICE_STUDIO_IMAGES_50',
+  'studio-videos-15': 'STRIPE_PRICE_STUDIO_VIDEOS_15',
+  'studio-editor-100': 'STRIPE_PRICE_STUDIO_EDITOR_100',
 }
 
 export function productMode(product: CheckoutProduct) {

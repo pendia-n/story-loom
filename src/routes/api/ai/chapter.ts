@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentUser, getDatabase, getRuntimeEnv, json, requireCsrf } from '../../../lib/server/auth'
-import { AI_CATALOG, modelRoute, monthlyRequestAllowance, type AiKind, type AiTier } from '../../../lib/server/ai-catalog'
+import { AI_CATALOG, modelRoute, monthlyAllowanceWithAddons, type AiKind, type AiTier } from '../../../lib/server/ai-catalog'
 
 type OpenRouterResponse = {
   choices?: Array<{ message?: { content?: string } }>
@@ -31,7 +31,8 @@ export const Route = createFileRoute('/api/ai/chapter')({
         const tier: AiTier = subscription?.tier || 'free'
         const monthStart = Math.floor(new Date(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1).getTime() / 1000)
         const used = await getDatabase().prepare("SELECT COUNT(*) AS requests FROM ai_jobs WHERE user_id = ?1 AND status = 'completed' AND created_at >= ?2").bind(user.id, monthStart).first<{ requests: number }>()
-        if ((used?.requests || 0) >= monthlyRequestAllowance[tier]) return json({ error: 'Your included Quiet Editor requests are used for this month.', tier, used: used?.requests || 0, allowance: monthlyRequestAllowance[tier] }, { status: 402 })
+        const allowance = await monthlyAllowanceWithAddons(getDatabase(), user.id, tier)
+        if ((used?.requests || 0) >= allowance) return json({ error: 'Your included Quiet Editor requests are used for this month.', tier, used: used?.requests || 0, allowance }, { status: 402 })
         const models = modelRoute(tier)
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
@@ -59,7 +60,7 @@ export const Route = createFileRoute('/api/ai/chapter')({
         const resolvedModel = result.model || models[0]
         await getDatabase().prepare('INSERT INTO ai_jobs (id, user_id, chapter_id, kind, status, model, input_tokens, output_tokens, result_json, created_at, completed_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)')
           .bind(crypto.randomUUID(), user.id, chapterId, kind, 'completed', resolvedModel, result.usage?.prompt_tokens ?? null, result.usage?.completion_tokens ?? null, JSON.stringify({ text, cost: result.usage?.cost ?? null, tier }), Math.floor(Date.now() / 1000)).run()
-        return json({ suggestion: text, model: resolvedModel, tier, requestsUsed: (used?.requests || 0) + 1, allowance: monthlyRequestAllowance[tier], cost: result.usage?.cost ?? null })
+        return json({ suggestion: text, model: resolvedModel, tier, requestsUsed: (used?.requests || 0) + 1, allowance, cost: result.usage?.cost ?? null })
       },
     },
   },

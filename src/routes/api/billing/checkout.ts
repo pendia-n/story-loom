@@ -2,7 +2,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createStripeCheckout, productMode, type CheckoutProduct } from '../../../lib/server/stripe'
 import { getCurrentUser, getDatabase, json, requireCsrf } from '../../../lib/server/auth'
 
-const products = new Set<CheckoutProduct>(['memory', 'studio', 'golden-hour', 'rain-window', 'stardust-ceiling', 'premiere-night', 'keepsake-export'])
+const products = new Set<CheckoutProduct>(['memory', 'studio', 'golden-hour', 'rain-window', 'stardust-ceiling', 'premiere-night', 'keepsake-export', 'studio-chapter', 'studio-images-50', 'studio-videos-15', 'studio-editor-100'])
+const chapterBoundProducts = new Set<CheckoutProduct>(['golden-hour', 'rain-window', 'stardust-ceiling', 'premiere-night', 'keepsake-export'])
 
 export const Route = createFileRoute('/api/billing/checkout')({
   server: {
@@ -16,7 +17,11 @@ export const Route = createFileRoute('/api/billing/checkout')({
         try {
           const product = body.product as CheckoutProduct
           const mode = productMode(product)
-          if (mode === 'payment') {
+          if (product.startsWith('studio-')) {
+            const subscription = await getDatabase().prepare("SELECT tier FROM subscriptions WHERE user_id = ?1 AND status IN ('active', 'trialing')").bind(user.id).first<{ tier: string }>()
+            if (subscription?.tier !== 'studio') return json({ error: 'Studio capacity add-ons require an active Studio plan.' }, { status: 402 })
+          }
+          if (mode === 'payment' && chapterBoundProducts.has(product)) {
             const chapter = await getDatabase().prepare('SELECT id FROM chapters WHERE id = ?1 AND owner_id = ?2').bind(body.chapterId ?? '', user.id).first()
             if (!chapter) return json({ error: 'Open one of your chapters before buying a permanent finish.' }, { status: 400 })
           }
