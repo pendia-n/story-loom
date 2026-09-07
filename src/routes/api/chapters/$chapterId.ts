@@ -23,9 +23,13 @@ export const Route = createFileRoute('/api/chapters/$chapterId')({
         if (!user) return json({ error: 'Sign in to delete this chapter.' }, { status: 401 })
         if (!(await requireCsrf(request))) return json({ error: 'Security check failed.' }, { status: 403 })
         const db = getDatabase()
+        const chapter = await db.prepare('SELECT background_object_key FROM chapters WHERE id = ?1 AND owner_id = ?2')
+          .bind(params.chapterId, user.id).first<{ background_object_key: string | null }>()
+        if (!chapter) return json({ error: 'Chapter not found.' }, { status: 404 })
         const media = await db.prepare('SELECT object_key FROM media WHERE chapter_id = ?1 AND owner_id = ?2')
           .bind(params.chapterId, user.id).all<{ object_key: string }>()
         await Promise.all(media.results.map((item) => getMediaBucket().delete(item.object_key)))
+        if (chapter.background_object_key) await getMediaBucket().delete(chapter.background_object_key)
         await db.prepare('DELETE FROM chapters WHERE id = ?1 AND owner_id = ?2').bind(params.chapterId, user.id).run()
         return json({ ok: true, deletedMedia: media.results.length })
       },

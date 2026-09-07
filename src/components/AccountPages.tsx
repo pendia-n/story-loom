@@ -9,8 +9,8 @@ type SecurityStatus = { totpEnabled: boolean; questionsEnabled: boolean; questio
 
 const tiers = [
   { code: 'free', name: 'Keepsake', price: '$0', cadence: 'forever', features: ['1 chapter', '12 images + 1 short video / chapter', '3 Quiet Editor moments / month', 'Room wall, Orbit, and Walk · 3 room lights'] },
-  { code: 'memory', name: 'Memory', price: '$5', cadence: 'per month · $48/year', features: ['12 chapters', '60 images + 3 short videos / chapter', '30 Quiet Editor moments / month', 'All room lights + 3 ambient finishes'] },
-  { code: 'studio', name: 'Studio', price: '$12', cadence: 'per month · $108/year', features: ['50 chapters', '120 images + 8 short videos / chapter', '150 Quiet Editor moments / month', 'All room lights + custom background image + all finishes'] },
+  { code: 'memory', name: 'Memory', price: '$5', cadence: 'per month · $48/year', features: ['12 chapters', '60 images + 3 short videos / chapter', '30 Quiet Editor moments / month', 'All five gradient room lights'] },
+  { code: 'studio', name: 'Studio', price: '$12', cadence: 'per month · $108/year', features: ['50 chapters', '120 images + 8 short videos / chapter', '150 Quiet Editor moments / month', 'All five lights + replaceable custom background'] },
 ]
 
 const studioAddons = [
@@ -188,7 +188,7 @@ export function AboutPage() {
 export function FaqPage() {
   const items = [
     ['Is this an AI gallery?', 'No. The 3D room, wall, orbit, and walk views are rendered with Three.js. The Quiet Editor is optional and runs only after an explicit request.'],
-    ['Are most editor jobs image-to-text?', 'Five of nine proposed jobs inspect selected images: mood, ordering, cover choice, narration, and alt text. Title, caption, memory thread, and future postcard can be text-only or mixed.'],
+    ['Which editor jobs inspect images?', 'Six of nine jobs can inspect only the images you explicitly select: mood, ordering, cover choice, narration, alt text, and future postcard. Title, caption, and memory thread remain text-only.'],
     ['What is the upload limit?', 'Images may be PNG, WebP, or GIF up to 5 MB. MP4 is allowed up to 25 MB and 30 seconds. SVG, JPEG/JPG, and AVIF are rejected.'],
     ['What does metadata cleansing do?', 'For images, supported metadata chunks are removed before R2 storage. MP4 is validated for size and duration but not rewritten.'],
     ['How do Room and Walk differ?', 'Room is a composed wall from a fixed editorial viewpoint. Walk places work along a corridor and gives first-person keyboard and drag movement. Orbit is a weightless constellation.'],

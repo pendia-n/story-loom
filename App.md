@@ -141,11 +141,13 @@ Implemented in the current Cloudflare Worker application:
 - Studio capacity entitlement calculations from paid D1 purchases.
 - Stripe product routing for subscriptions, permanent finishes, and Studio add-ons.
 - Three.js Room, Orbit, and Walk rendering with atmospheric lighting and the four permanent finishes.
+- Upload-preview ordering and persistent post-upload ordering shared by Room, Orbit, and Walk.
+- Caption editing and explicit destructive controls for individual memories and whole chapters.
+- Quiet Editor image selection with explicit provider consent, ownership validation, and real image input for visual actions.
 - Two-dimensional fallback when WebGL cannot initialize.
 
-The Quiet Editor route currently has the nine named action types and tier-level model fallback routing. The next required multimodal milestone is to pass actual image content to the image-based actions—Mood palette, Scene ordering, Cover choice, Chapter narration, and Accessible alt text—rather than relying only on a text instruction. Until that work is completed, those actions must not be described as having already inspected the user's images.
+The Quiet Editor has nine named action types and tier-level model fallback routing. Visual actions accept up to eight explicitly selected chapter images with a 12 MB combined sharing limit. The Worker verifies that every selected image belongs to the signed-in user and open chapter, excludes MP4, and sends image content only after the user checks the external-provider consent box. Text-only actions do not send chapter images.
 
 ## Operating principle
 
 Story Loom should feel like owning a small fountain of remembered light: open when desired, enrich when useful, and never make the person calculate the price of looking back.
-

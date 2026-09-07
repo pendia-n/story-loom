@@ -4,6 +4,7 @@ import { getCurrentUser, getDatabase, json, requireCsrf } from '../../../lib/ser
 
 const products = new Set<CheckoutProduct>(['memory', 'studio', 'golden-hour', 'rain-window', 'stardust-ceiling', 'premiere-night', 'keepsake-export', 'studio-chapter', 'studio-images-50', 'studio-videos-15', 'studio-editor-100'])
 const chapterBoundProducts = new Set<CheckoutProduct>(['golden-hour', 'rain-window', 'stardust-ceiling', 'premiere-night', 'keepsake-export'])
+const permanentFinishProducts = new Set<CheckoutProduct>(['golden-hour', 'rain-window', 'stardust-ceiling', 'premiere-night'])
 
 export const Route = createFileRoute('/api/billing/checkout')({
   server: {
@@ -24,6 +25,10 @@ export const Route = createFileRoute('/api/billing/checkout')({
           if (mode === 'payment' && chapterBoundProducts.has(product)) {
             const chapter = await getDatabase().prepare('SELECT id FROM chapters WHERE id = ?1 AND owner_id = ?2').bind(body.chapterId ?? '', user.id).first()
             if (!chapter) return json({ error: 'Open one of your chapters before buying a permanent finish.' }, { status: 400 })
+            if (permanentFinishProducts.has(product)) {
+              const existing = await getDatabase().prepare("SELECT id FROM purchases WHERE user_id = ?1 AND chapter_id = ?2 AND product_code = ?3 AND status = 'paid' LIMIT 1").bind(user.id, body.chapterId ?? '', product).first()
+              if (existing) return json({ error: 'This chapter already owns that permanent finish.' }, { status: 409 })
+            }
           }
           return json({ ...(await createStripeCheckout(product, user.id, request, mode === 'payment' ? body.chapterId : undefined)), mode })
         } catch (error) {

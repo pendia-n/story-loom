@@ -53,6 +53,13 @@ const backgroundColors: Record<BackgroundMode, [string, string, string]> = {
   morning: ['#c8d5cf', '#ead9bb', '#fff4dd'], night: ['#030b09', '#0b1c16', '#183a2e'],
   twilight: ['#c47d68', '#4c5260', '#172a35'], afternoon: ['#fffefa', '#f2f1ec', '#dbe4e4'], sunrise: ['#101c38', '#435675', '#a27f78'],
 }
+const roomSurfaceColors: Record<BackgroundMode, { floor: string; wall: string; ceiling: string }> = {
+  morning: { floor: '#9fb8aa', wall: '#d8dfd3', ceiling: '#f4ead4' },
+  night: { floor: '#18332d', wall: '#102721', ceiling: '#0b1f1a' },
+  twilight: { floor: '#3d4652', wall: '#65555b', ceiling: '#293744' },
+  afternoon: { floor: '#d5dedc', wall: '#f4f1e9', ceiling: '#fffefa' },
+  sunrise: { floor: '#263652', wall: '#435675', ceiling: '#17233d' },
+}
 
 function atmosphereTexture(mode: BackgroundMode) {
   const canvas = document.createElement('canvas'); canvas.width = 900; canvas.height = 600
@@ -74,6 +81,13 @@ const chapterFinishes = [
   ['premiere-night', 'Premiere Night', '$3.99', 'Cinema lighting and a title sequence.'],
   ['keepsake-export', 'Keepsake Export', '$9–19', 'A high-resolution downloadable chapter archive.'],
 ] as const
+
+const quietEditorActions = [
+  ['title-polish', 'Title polish', false], ['caption-polish', 'Caption polish', false], ['memory-thread', 'Memory thread', false],
+  ['mood-palette', 'Mood palette', true], ['scene-ordering', 'Scene ordering', true], ['cover-choice', 'Cover choice', true],
+  ['chapter-narration', 'Chapter narration', true], ['alt-text', 'Accessible alt text', true], ['future-postcard', 'Future postcard', true],
+] as const
+type QuietEditorKind = typeof quietEditorActions[number][0]
 
 function artworkTexture(photo: Photo, index: number) {
   const canvas = document.createElement('canvas')
@@ -197,6 +211,7 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
 
     const textureLoader = new THREE.TextureLoader()
     const ownedTextures = new Set<Three.Texture>()
+    const customSurfaceMaterials: Three.MeshStandardMaterial[] = []
     const atmosphere = atmosphereTexture(backgroundMode)
     ownedTextures.add(atmosphere)
     const atmosphereDome = new THREE.Mesh(
@@ -210,35 +225,42 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
         ownedTextures.add(loaded)
         ;(atmosphereDome.material as Three.MeshBasicMaterial).map = loaded
         ;(atmosphereDome.material as Three.MeshBasicMaterial).needsUpdate = true
+        customSurfaceMaterials.forEach((material) => { material.map = loaded; material.color.set('#ffffff'); material.needsUpdate = true })
         atmosphere.dispose()
       })
     }
 
     const room = new THREE.Group()
     scene.add(room)
+    const surfaces = roomSurfaceColors[backgroundMode]
+    const floorMaterial = new THREE.MeshStandardMaterial({ color: surfaces.floor, roughness: 0.9, metalness: 0.05 })
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(24, 34),
-      new THREE.MeshStandardMaterial({ color: '#18332d', roughness: 0.9, metalness: 0.05 }),
+      floorMaterial,
     )
     floor.rotation.x = -Math.PI / 2
     room.add(floor)
+    const backWallMaterial = new THREE.MeshStandardMaterial({ color: surfaces.wall, roughness: 0.96, side: THREE.DoubleSide })
+    customSurfaceMaterials.push(backWallMaterial)
     const backWall = new THREE.Mesh(
       new THREE.PlaneGeometry(24, 10),
-      new THREE.MeshStandardMaterial({ color: '#102721', roughness: 0.96, side: THREE.DoubleSide }),
+      backWallMaterial,
     )
     backWall.position.set(0, 5, -8)
     room.add(backWall)
     const ceiling = new THREE.Mesh(
       new THREE.PlaneGeometry(24, 34),
-      new THREE.MeshStandardMaterial({ color: '#0b1f1a', roughness: 1, side: THREE.DoubleSide }),
+      new THREE.MeshStandardMaterial({ color: surfaces.ceiling, roughness: 1, side: THREE.DoubleSide }),
     )
     ceiling.position.y = 10
     ceiling.rotation.x = Math.PI / 2
     room.add(ceiling)
     if (mode === 'walk') {
-      const corridorMaterial = new THREE.MeshStandardMaterial({ color: '#102721', roughness: 0.96, side: THREE.DoubleSide })
+      const corridorMaterial = new THREE.MeshStandardMaterial({ color: surfaces.wall, roughness: 0.96, side: THREE.DoubleSide })
       for (const side of [-1, 1]) {
-        const wall = new THREE.Mesh(new THREE.PlaneGeometry(34, 9), corridorMaterial.clone())
+        const material = corridorMaterial.clone()
+        customSurfaceMaterials.push(material)
+        const wall = new THREE.Mesh(new THREE.PlaneGeometry(34, 9), material)
         wall.position.set(side * 4.1, 4.5, -1)
         wall.rotation.y = side === 1 ? -Math.PI / 2 : Math.PI / 2
         room.add(wall)
@@ -515,6 +537,24 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
   const [answer2, setAnswer2] = useState('')
   const [totpSetup, setTotpSetup] = useState<{ secret: string; qr: string } | null>(null)
   const [totpCode, setTotpCode] = useState('')
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle')
+  const passwordGroups = [/[a-z]/.test(password), /[A-Z]/.test(password), /\d/.test(password), /[^A-Za-z0-9]/.test(password)].filter(Boolean).length
+  const passwordStrong = password.length >= 12 && passwordGroups >= 3
+
+  useEffect(() => {
+    if (!isRegistering) { setUsernameStatus('idle'); return }
+    const normalized = username.trim().toLowerCase()
+    if (!normalized) { setUsernameStatus('idle'); return }
+    if (!/^[a-z0-9_]{3,24}$/.test(normalized)) { setUsernameStatus('invalid'); return }
+    setUsernameStatus('checking')
+    const timer = window.setTimeout(() => {
+      void fetch(`/api/auth/username?username=${encodeURIComponent(normalized)}`).then(async (response) => {
+        const result = await response.json() as { available?: boolean }
+        setUsernameStatus(response.ok && result.available ? 'available' : 'taken')
+      }).catch(() => setUsernameStatus('idle'))
+    }, 350)
+    return () => window.clearTimeout(timer)
+  }, [isRegistering, username])
 
   function finish(user?: User) {
     if (user) onAuthed(user)
@@ -536,6 +576,9 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
 
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError('')
+    if (isRegistering && (usernameStatus !== 'available' || !passwordStrong)) {
+      setBusy(false); setError(usernameStatus !== 'available' ? 'Choose an available username first.' : 'Use a password that meets the visible strength rules.'); return
+    }
     if (isRegistering && addTotp && (!totpSetup || !/^\d{6}$/.test(totpCode))) {
       setBusy(false); setError('Prepare TOTP and enter its six-digit code before creating the account.'); return
     }
@@ -558,8 +601,8 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
     <h2>{isRegistering ? 'Make a little room' : 'Welcome back'}</h2>
     <p className="modal-copy">Your chapters stay yours. Sign in when you want to save a new one.</p>
     <form onSubmit={submit} className="stack-form">
-      <label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label>
-      <label>Password<input type="password" minLength={isRegistering ? 12 : undefined} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={isRegistering ? 'new-password' : 'current-password'} required />{isRegistering && <small className="field-help">12+ characters; use three of uppercase, lowercase, number, and symbol.</small>}</label>
+      <label>Username<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" minLength={isRegistering ? 3 : undefined} maxLength={isRegistering ? 24 : undefined} pattern={isRegistering ? '[a-zA-Z0-9_]+' : undefined} required />{isRegistering && <small className={`field-help validation-${usernameStatus}`}>{usernameStatus === 'checking' ? 'Checking…' : usernameStatus === 'available' ? 'Available — this room name is yours.' : usernameStatus === 'taken' ? 'Already taken. Try another.' : usernameStatus === 'invalid' ? 'Use 3–24 letters, numbers, or underscores.' : '3–24 letters, numbers, or underscores.'}</small>}</label>
+      <label>Password<input type="password" minLength={isRegistering ? 12 : undefined} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={isRegistering ? 'new-password' : 'current-password'} required />{isRegistering && <small className={`field-help ${password ? (passwordStrong ? 'validation-available' : 'validation-invalid') : ''}`}>{passwordStrong ? 'Strong enough.' : '12+ characters; use three of uppercase, lowercase, number, and symbol.'}</small>}</label>
       {isRegistering && <div className="signup-recovery">
         <label className="option-switch"><input type="checkbox" checked={addTotp} onChange={(event) => { setAddTotp(event.target.checked); setTotpSetup(null); setTotpCode('') }} /><span><strong>Authenticator recovery</strong><small>Optional · connect and verify before account creation</small></span></label>
         {addTotp && <div className="totp-setup">{totpSetup ? <><img src={totpSetup.qr} alt="Authenticator setup QR code" /><p>Scan now. Manual key: <code>{totpSetup.secret}</code></p><label>Six-digit code<input value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" pattern="[0-9]{6}" required /></label><button type="button" className="auth-secondary-action" onClick={() => void prepareTotp()} disabled={busy}>Generate a new key</button></> : <button type="button" className="button button-cream" onClick={() => void prepareTotp()} disabled={busy}>Prepare authenticator</button>}</div>}
@@ -608,10 +651,20 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   const [uploadProgress, setUploadProgress] = useState(0)
   const [draggedPendingId, setDraggedPendingId] = useState<string | null>(null)
   const [draggedPhotoId, setDraggedPhotoId] = useState<string | null>(null)
+  const [showEditor, setShowEditor] = useState(false)
+  const [editorKind, setEditorKind] = useState<QuietEditorKind>('caption-polish')
+  const [editorInstruction, setEditorInstruction] = useState('')
+  const [editorMediaIds, setEditorMediaIds] = useState<string[]>([])
+  const [editorConsent, setEditorConsent] = useState(false)
+  const [editorResult, setEditorResult] = useState('')
+  const [captionDraft, setCaptionDraft] = useState(selectedPhoto?.caption ?? '')
   const uploadRef = useRef<HTMLInputElement>(null)
   const backgroundRef = useRef<HTMLInputElement>(null)
   const activeModeLabel = useMemo(() => ({ room: 'Curated wall', float: 'Slow orbit', walk: 'First-person walk' }[mode]), [mode])
   const allowedBackgroundModes = useMemo<BackgroundMode[]>(() => tier === 'free' ? ['morning', 'night', 'afternoon'] : ['morning', 'night', 'twilight', 'afternoon', 'sunrise'], [tier])
+  const editorNeedsImages = quietEditorActions.find(([code]) => code === editorKind)?.[2] ?? false
+
+  useEffect(() => { setCaptionDraft(selectedPhoto?.caption ?? '') }, [selectedPhoto])
 
   useEffect(() => {
     void fetch('/api/auth/me').then(async (response) => {
@@ -676,7 +729,7 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     const files = Array.from(event.target.files ?? [])
     if (!activeChapter || files.length === 0) return
     const allowed = new Set(['image/png', 'image/webp', 'image/gif', 'video/mp4'])
-    const accepted = files.slice(0, 20).filter((file) => allowed.has(file.type) && file.size <= (file.type === 'video/mp4' ? 25 : 5) * 1024 * 1024)
+    const accepted = files.slice(0, 120).filter((file) => allowed.has(file.type) && file.size <= (file.type === 'video/mp4' ? 25 : 5) * 1024 * 1024)
     if (accepted.length !== files.length) setNotice('Some files were skipped. Use PNG, WebP, GIF (5 MB) or MP4 (25 MB, 30 seconds).')
     setPendingUploads(accepted.map((file) => ({ id: crypto.randomUUID(), file, previewUrl: URL.createObjectURL(file) })))
     setUploadProgress(0)
@@ -699,12 +752,18 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   async function confirmUploads() {
     if (!activeChapter || pendingUploads.length === 0) return
     setLoading(true); setNotice('')
+    let uploadedCount = 0
     for (let index = 0; index < pendingUploads.length; index += 1) {
       const file = pendingUploads[index].file
       const form = new FormData(); form.set('chapterId', activeChapter.id); form.set('file', file); form.set('cleanMetadata', String(cleanMetadata))
       const response = await fetch('/api/media', { method: 'POST', headers: csrfHeaders(), body: form })
-      if (!response.ok) { const result = await response.json() as { error?: string }; setNotice(result.error ?? 'One photo could not be added.'); break }
-      setUploadProgress(index + 1)
+      if (!response.ok) {
+        const result = await response.json() as { error?: string }
+        pendingUploads.slice(0, uploadedCount).forEach((item) => URL.revokeObjectURL(item.previewUrl))
+        setPendingUploads(pendingUploads.slice(uploadedCount)); setLoading(false)
+        await openChapter(activeChapter); setNotice(`${result.error ?? 'One photo could not be added.'} The remaining files are still here.`); return
+      }
+      uploadedCount = index + 1; setUploadProgress(uploadedCount)
     }
     closeUploadPreview(); setLoading(false); await openChapter(activeChapter)
   }
@@ -724,8 +783,57 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     const next = [...photos]; const [item] = next.splice(from, 1); next.splice(to, 0, item); void savePhotoOrder(next)
   }
 
+  function openEditor() {
+    const defaultImage = selectedPhoto && selectedPhoto.id !== 'empty' && selectedPhoto.contentType !== 'video/mp4' ? [selectedPhoto.id] : []
+    setEditorMediaIds(defaultImage); setEditorInstruction(''); setEditorConsent(false); setEditorResult(''); setShowEditor(true)
+  }
+
+  async function runEditor(event: React.FormEvent) {
+    event.preventDefault()
+    if (!activeChapter) return
+    setLoading(true); setEditorResult(''); setNotice('')
+    const response = await fetch('/api/ai/chapter', { method: 'POST', headers: { 'content-type': 'application/json', ...csrfHeaders() }, body: JSON.stringify({ chapterId: activeChapter.id, kind: editorKind, instruction: editorInstruction, mediaIds: editorNeedsImages ? editorMediaIds : [], shareWithProvider: editorConsent }) })
+    const result = await response.json() as { suggestion?: string; error?: string }
+    setLoading(false)
+    if (!response.ok || !result.suggestion) { setNotice(result.error ?? 'The Quiet Editor could not finish.'); return }
+    setEditorResult(result.suggestion)
+  }
+
+  async function saveCaption() {
+    if (!selectedPhoto || selectedPhoto.id === 'empty') return
+    setLoading(true)
+    const response = await fetch(`/api/media/${selectedPhoto.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json', ...csrfHeaders() }, body: JSON.stringify({ caption: captionDraft }) })
+    const result = await response.json() as { caption?: string; error?: string }
+    setLoading(false)
+    if (!response.ok) { setNotice(result.error ?? 'That caption could not be saved.'); return }
+    const caption = result.caption ?? ''
+    setPhotos((current) => current.map((photo) => photo.id === selectedPhoto.id ? { ...photo, caption } : photo)); setSelectedPhoto({ ...selectedPhoto, caption }); setNotice('Caption saved.')
+  }
+
+  async function removeSelectedPhoto() {
+    if (!selectedPhoto || selectedPhoto.id === 'empty' || !activeChapter) return
+    if (!window.confirm(`Remove “${selectedPhoto.title}” from this chapter? This permanently deletes its stored file.`)) return
+    setLoading(true)
+    const response = await fetch(`/api/media/${selectedPhoto.id}`, { method: 'DELETE', headers: csrfHeaders() })
+    setLoading(false)
+    if (!response.ok) { const result = await response.json() as { error?: string }; setNotice(result.error ?? 'That memory could not be removed.'); return }
+    await openChapter(activeChapter); setNotice('Memory removed from the chapter.')
+  }
+
+  async function removeChapter(chapter: Chapter) {
+    if (!window.confirm(`Delete “${chapter.title}” and every stored memory in it? This cannot be undone.`)) return
+    setLoading(true)
+    const response = await fetch(`/api/chapters/${chapter.id}`, { method: 'DELETE', headers: csrfHeaders() })
+    setLoading(false)
+    if (!response.ok) { const result = await response.json() as { error?: string }; setNotice(result.error ?? 'That chapter could not be deleted.'); return }
+    setChapters((current) => current.filter((item) => item.id !== chapter.id))
+    if (activeChapter?.id === chapter.id) window.location.assign('/app')
+    else setNotice('Chapter and its stored memories were deleted.')
+  }
+
   async function checkoutFinish(product: string) {
     if (!activeChapter) return
+    if (finishes.includes(product)) { setNotice('This chapter already owns that permanent finish.'); return }
     setLoading(true); setNotice('')
     const response = await fetch('/api/billing/checkout', { method: 'POST', headers: { 'content-type': 'application/json', ...csrfHeaders() }, body: JSON.stringify({ product, chapterId: activeChapter.id }) })
     const result = await response.json() as { url?: string; error?: string }
@@ -781,7 +889,16 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
       </div>)}</div>
       {loading && <p className="upload-progress">Placing {uploadProgress} of {pendingUploads.length}…</p>}<div className="modal-actions"><button type="button" className="button button-ghost" disabled={loading} onClick={closeUploadPreview}>Cancel</button><button type="button" className="button button-primary" disabled={loading} onClick={() => void confirmUploads()}>{loading ? 'Placing…' : `Upload ${pendingUploads.length} memories`}</button></div>
     </Modal>}
-    {showFinishes && activeChapter && <Modal onClose={() => setShowFinishes(false)}><div className="modal-eyebrow">Permanent chapter finish</div><h2>Give this room its atmosphere.</h2><p className="modal-copy">One payment attaches the finish to “{activeChapter.title}”. Returning to the chapter never costs again.</p><div className="finish-picker">{chapterFinishes.map(([code, name, price, copy]) => <button key={code} type="button" onClick={() => void checkoutFinish(code)} disabled={loading}><span><strong>{name}</strong><small>{copy}</small></span><em>{price}</em></button>)}</div>{notice && <p className="notice">{notice}</p>}</Modal>}
+    {showEditor && activeChapter && <Modal onClose={() => { if (!loading) setShowEditor(false) }}>
+      <div className="modal-eyebrow">Quiet Editor</div><h2>Ask for one gentle edit.</h2><p className="modal-copy">Nothing is sent until you choose an action, select the memories, and confirm. One completed action uses one included request.</p>
+      <form className="stack-form" onSubmit={runEditor}><label>Editor action<select value={editorKind} onChange={(event) => { const next = event.target.value as QuietEditorKind; setEditorKind(next); setEditorResult('') }}>{quietEditorActions.map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></label>
+      {editorNeedsImages && <fieldset className="editor-memory-picker"><legend>Images to share · up to 8 / 12 MB</legend>{photos.filter((photo) => photo.id !== 'empty' && photo.contentType !== 'video/mp4').map((photo) => <label key={photo.id}><input type="checkbox" checked={editorMediaIds.includes(photo.id)} onChange={(event) => setEditorMediaIds((current) => event.target.checked ? [...current, photo.id].slice(0, 8) : current.filter((id) => id !== photo.id))} /><span>{photo.title}</span></label>)}</fieldset>}
+      <label>Your direction<textarea value={editorInstruction} onChange={(event) => setEditorInstruction(event.target.value)} maxLength={800} placeholder="Keep it warm and factual; do not invent details." required /></label>
+      <label className="provider-consent"><input type="checkbox" checked={editorConsent} onChange={(event) => setEditorConsent(event.target.checked)} required /><span>I understand this direction{editorNeedsImages ? ' and the selected images' : ''} will be sent to OpenRouter and its selected model for this request.</span></label>
+      <button className="button button-primary" disabled={loading || (editorNeedsImages && editorMediaIds.length === 0)}>{loading ? 'Listening…' : 'Ask Quiet Editor'}</button></form>
+      {notice && <p className="form-error">{notice}</p>}{editorResult && <div className="editor-result"><div className="eyebrow">Editable suggestion</div><p>{editorResult}</p><button type="button" className="button button-ghost" onClick={() => void navigator.clipboard.writeText(editorResult)}>Copy suggestion</button></div>}
+    </Modal>}
+    {showFinishes && activeChapter && <Modal onClose={() => setShowFinishes(false)}><div className="modal-eyebrow">Permanent chapter finish</div><h2>Give this room its atmosphere.</h2><p className="modal-copy">One payment attaches the finish to “{activeChapter.title}”. Returning to the chapter never costs again.</p><div className="finish-picker">{chapterFinishes.map(([code, name, price, copy]) => { const owned = finishes.includes(code); return <button key={code} type="button" onClick={() => void checkoutFinish(code)} disabled={loading || owned}><span><strong>{name}</strong><small>{copy}</small></span><em>{owned ? 'Owned' : price}</em></button> })}</div>{notice && <p className="notice">{notice}</p>}</Modal>}
     <AppHeader authenticated={Boolean(user)} username={user?.username} onSignIn={user ? undefined : () => setShowAuth(true)} onSignOut={user ? () => void signOut() : undefined} />
     <main>
       <section className="hero-section page-wrap">
@@ -797,14 +914,14 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
       <section id="room" className="room-section page-wrap">
         <div className="room-heading"><div><div className="eyebrow">The room is open</div><h2>{activeChapter?.title ?? 'A little light from the way home'}</h2><p>{activeChapter?.subtitle ?? 'A demo chapter, made for wandering.'}</p></div><div className="room-meta"><span>{photos.length} scenes</span><span className="meta-divider">·</span><span>{activeModeLabel}</span></div></div>
         <div className="room-stage"><GalleryCanvas photos={photos} mode={mode} backgroundMode={backgroundMode} backgroundUrl={backgroundUrl} finishes={finishes} selectedId={selectedId} onSelect={selectedPhotoChanged} /><div className="stage-glow" /><div className="stage-caption"><span className="caption-line" /> <span>{mode === 'walk' ? 'WASD / arrows to walk · drag to look' : 'Select a frame to linger'}</span></div></div>
-        <div className="room-controls"><div><div className="mode-switch" aria-label="Gallery view mode">{(['room', 'float', 'walk'] as ViewMode[]).map((item) => <button type="button" key={item} className={mode === item ? 'is-active' : ''} onClick={() => setMode(item)}>{item === 'room' ? 'Room wall' : item === 'float' ? 'Orbit' : 'Walk inside'}</button>)}</div><p className="mode-help">{mode === 'room' ? 'See the whole chapter as a composed exhibition wall.' : mode === 'float' ? 'Let memories circle slowly in a weightless constellation.' : 'Move through a corridor with WASD or arrow keys; drag to look around.'}</p></div><div className="room-tools">{activeChapter && <><div className="atmosphere-controls"><label>Room light<select value={backgroundMode} onChange={(event) => void changeBackgroundMode(event.target.value as BackgroundMode)}>{allowedBackgroundModes.map((item) => <option key={item} value={item}>{backgroundLabels[item]}</option>)}</select></label>{tier === 'studio' && <><input ref={backgroundRef} type="file" accept=".png,.webp,.gif,image/png,image/webp,image/gif" hidden onChange={(event) => void uploadBackground(event)} /><button type="button" className="button button-ghost" onClick={() => backgroundRef.current?.click()} disabled={loading}>{backgroundUrl ? 'Replace room image' : 'Use room image'}</button>{backgroundUrl && <button type="button" className="text-button" onClick={() => void clearBackground()} disabled={loading}>Use gradient</button>}</>}</div><label className="clean-toggle"><input type="checkbox" checked={cleanMetadata} onChange={(event) => setCleanMetadata(event.target.checked)} /> Clean image metadata</label><input ref={uploadRef} type="file" accept=".png,.webp,.gif,.mp4,image/png,image/webp,image/gif,video/mp4" multiple hidden onChange={stageFiles} /><button type="button" className="button button-cream" onClick={() => uploadRef.current?.click()} disabled={loading}>{loading ? 'Placing…' : '+ Add memories'}</button><button type="button" className="button button-ghost" onClick={() => setShowFinishes(true)}>Add atmosphere</button></>}{notice && <span className="notice">{notice}</span>}</div></div>
+        <div className="room-controls"><div><div className="mode-switch" aria-label="Gallery view mode">{(['room', 'float', 'walk'] as ViewMode[]).map((item) => <button type="button" key={item} className={mode === item ? 'is-active' : ''} onClick={() => setMode(item)}>{item === 'room' ? 'Room wall' : item === 'float' ? 'Orbit' : 'Walk inside'}</button>)}</div><p className="mode-help">{mode === 'room' ? 'See the whole chapter as a composed exhibition wall.' : mode === 'float' ? 'Let memories circle slowly in a weightless constellation.' : 'Move through a corridor with WASD or arrow keys; drag to look around.'}</p></div><div className="room-tools">{activeChapter && <><div className="atmosphere-controls"><label>Room light<select value={backgroundMode} onChange={(event) => void changeBackgroundMode(event.target.value as BackgroundMode)}>{allowedBackgroundModes.map((item) => <option key={item} value={item}>{backgroundLabels[item]}</option>)}</select></label>{tier === 'studio' && <><input ref={backgroundRef} type="file" accept=".png,.webp,.gif,image/png,image/webp,image/gif" hidden onChange={(event) => void uploadBackground(event)} /><button type="button" className="button button-ghost" onClick={() => backgroundRef.current?.click()} disabled={loading}>{backgroundUrl ? 'Replace room image' : 'Use room image'}</button>{backgroundUrl && <button type="button" className="text-button" onClick={() => void clearBackground()} disabled={loading}>Use gradient</button>}</>}</div><label className="clean-toggle"><input type="checkbox" checked={cleanMetadata} onChange={(event) => setCleanMetadata(event.target.checked)} /> Clean image metadata</label><input ref={uploadRef} type="file" accept=".png,.webp,.gif,.mp4,image/png,image/webp,image/gif,video/mp4" multiple hidden onChange={stageFiles} /><button type="button" className="button button-cream" onClick={() => uploadRef.current?.click()} disabled={loading}>{loading ? 'Placing…' : '+ Add memories'}</button><button type="button" className="button button-ghost" onClick={openEditor}>Quiet Editor</button><button type="button" className="button button-ghost" onClick={() => setShowFinishes(true)}>Add atmosphere</button></>}{notice && <span className="notice">{notice}</span>}</div></div>
       </section>
 
       <section className="story-section page-wrap"><div className="story-intro"><div className="eyebrow">One room, many ways back</div><h2>A gallery that waits<br />for your next mood.</h2></div><div className="story-grid"><article><span className="story-number">01</span><h3>Collect gently</h3><p>Drop in a few photos. Story Loom makes the room, the rhythm, and the little pause between each scene.</p></article><article><span className="story-number">02</span><h3>Wander slowly</h3><p>Choose a calm orbit or walk the walls. The gallery is made to be visited, not completed.</p></article><article><span className="story-number">03</span><h3>Keep it yours</h3><p>Your chapters live behind your account. There is no public feed asking you to perform your memories.</p></article></div></section>
 
-      {user && <section className="chapters-section page-wrap"><div className="room-heading"><div><div className="eyebrow">Your rooms</div><h2>Return whenever you like.</h2></div><button className="button button-primary" onClick={() => setShowCreate(true)}>+ New chapter</button></div>{chapters.length === 0 ? <div className="empty-state">Your first chapter is one small upload away.</div> : <div className="chapter-list">{chapters.map((chapter) => <Link key={chapter.id} className={`chapter-row ${activeChapter?.id === chapter.id ? 'is-active' : ''}`} to="/chapters/$chapterId" params={{ chapterId: chapter.id }}><span><strong>{chapter.title}</strong><small>{chapter.subtitle}</small></span><span>Open ↗</span></Link>)}</div>}</section>}
+      {user && <section className="chapters-section page-wrap"><div className="room-heading"><div><div className="eyebrow">Your rooms</div><h2>Return whenever you like.</h2></div><button className="button button-primary" onClick={() => setShowCreate(true)}>+ New chapter</button></div>{chapters.length === 0 ? <div className="empty-state">Your first chapter is one small upload away.</div> : <div className="chapter-list">{chapters.map((chapter) => <div className={`chapter-list-item ${activeChapter?.id === chapter.id ? 'is-active' : ''}`} key={chapter.id}><Link className="chapter-row" to="/chapters/$chapterId" params={{ chapterId: chapter.id }}><span><strong>{chapter.title}</strong><small>{chapter.subtitle}</small></span><span>Open ↗</span></Link><button type="button" className="chapter-delete" onClick={() => void removeChapter(chapter)} aria-label={`Delete ${chapter.title}`}>Delete</button></div>)}</div>}</section>}
 
-      {selectedPhoto && <section className="linger-wrap page-wrap"><div className="linger-section"><div className="linger-mark">✦</div><div><div className="eyebrow">A moment to linger</div><h2>{selectedPhoto.title}</h2><p>{selectedPhoto.caption}</p></div><span className="linger-count">{String(Math.max(photos.findIndex((photo) => photo.id === selectedPhoto.id) + 1, 1)).padStart(2, '0')} / {String(photos.length).padStart(2, '0')}</span></div><div className="memory-ribbon" aria-label="All memories in this chapter">{photos.map((photo, index) => <div key={photo.id} className={`ribbon-card ${photo.id === selectedPhoto.id ? 'is-active' : ''}`} draggable={Boolean(activeChapter && photo.id !== 'empty')} onDragStart={() => setDraggedPhotoId(photo.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedPhotoId) movePhoto(draggedPhotoId, photo.id); setDraggedPhotoId(null) }}><button type="button" className="ribbon-select" onClick={() => selectedPhotoChanged(photo.id)}><span>{String(index + 1).padStart(2, '0')}</span><strong>{photo.title}</strong></button>{activeChapter && photo.id !== 'empty' && <div className="ribbon-order"><button type="button" disabled={index === 0} aria-label={`Move ${photo.title} earlier`} onClick={() => movePhoto(photo.id, photos[index - 1].id)}>←</button><button type="button" disabled={index === photos.length - 1} aria-label={`Move ${photo.title} later`} onClick={() => movePhoto(photo.id, photos[index + 1].id)}>→</button></div>}</div>)}</div></section>}
+      {selectedPhoto && <section className="linger-wrap page-wrap"><div className="linger-section"><div className="linger-mark">✦</div><div><div className="eyebrow">A moment to linger</div><h2>{selectedPhoto.title}</h2><p>{selectedPhoto.caption}</p>{activeChapter && selectedPhoto.id !== 'empty' && <div className="memory-edit"><textarea value={captionDraft} maxLength={280} onChange={(event) => setCaptionDraft(event.target.value)} aria-label="Memory caption" /><button type="button" className="button button-ghost" disabled={loading} onClick={() => void saveCaption()}>Save caption</button><button type="button" className="text-button danger" disabled={loading} onClick={() => void removeSelectedPhoto()}>Remove memory</button></div>}</div><span className="linger-count">{String(Math.max(photos.findIndex((photo) => photo.id === selectedPhoto.id) + 1, 1)).padStart(2, '0')} / {String(photos.length).padStart(2, '0')}</span></div><div className="memory-ribbon" aria-label="All memories in this chapter">{photos.map((photo, index) => <div key={photo.id} className={`ribbon-card ${photo.id === selectedPhoto.id ? 'is-active' : ''}`} draggable={Boolean(activeChapter && photo.id !== 'empty')} onDragStart={() => setDraggedPhotoId(photo.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedPhotoId) movePhoto(draggedPhotoId, photo.id); setDraggedPhotoId(null) }}><button type="button" className="ribbon-select" onClick={() => selectedPhotoChanged(photo.id)}><span>{String(index + 1).padStart(2, '0')}</span><strong>{photo.title}</strong></button>{activeChapter && photo.id !== 'empty' && <div className="ribbon-order"><button type="button" disabled={index === 0} aria-label={`Move ${photo.title} earlier`} onClick={() => movePhoto(photo.id, photos[index - 1].id)}>←</button><button type="button" disabled={index === photos.length - 1} aria-label={`Move ${photo.title} later`} onClick={() => movePhoto(photo.id, photos[index + 1].id)}>→</button></div>}</div>)}</div></section>}
     </main>
     <footer className="loom-footer page-wrap"><span>story loom · made for the moments that stay</span><span>v1 · your private gallery</span></footer>
   </div>
