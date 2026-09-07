@@ -20,6 +20,12 @@ type Photo = {
   durationSeconds?: number | null
 }
 
+type PendingUpload = {
+  id: string
+  file: File
+  previewUrl: string
+}
+
 type Chapter = {
   id: string
   title: string
@@ -598,6 +604,10 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('night')
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null)
   const [finishes, setFinishes] = useState<string[]>([])
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([])
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [draggedPendingId, setDraggedPendingId] = useState<string | null>(null)
+  const [draggedPhotoId, setDraggedPhotoId] = useState<string | null>(null)
   const uploadRef = useRef<HTMLInputElement>(null)
   const backgroundRef = useRef<HTMLInputElement>(null)
   const activeModeLabel = useMemo(() => ({ room: 'Curated wall', float: 'Slow orbit', walk: 'First-person walk' }[mode]), [mode])
@@ -615,9 +625,9 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     if (!user || !initialChapterId) return
     void fetch(`/api/chapters/${initialChapterId}`).then(async (response) => {
       if (!response.ok) return
-      const result = await response.json() as { chapter?: Chapter; media?: Array<{ id: string; filename: string; url: string; content_type?: string; duration_seconds?: number | null }> }
+      const result = await response.json() as { chapter?: Chapter; media?: Array<{ id: string; filename: string; caption?: string | null; url: string; content_type?: string; duration_seconds?: number | null }> }
       if (!result.chapter) return
-      const loaded = (result.media ?? []).map((item) => ({ id: item.id, title: item.filename, caption: item.content_type === 'video/mp4' ? 'A moving moment from this chapter.' : 'A moment from this chapter.', url: item.url, contentType: item.content_type, durationSeconds: item.duration_seconds }))
+      const loaded = (result.media ?? []).map((item) => ({ id: item.id, title: item.filename, caption: item.caption || (item.content_type === 'video/mp4' ? 'A moving moment from this chapter.' : 'A moment from this chapter.'), url: item.url, contentType: item.content_type, durationSeconds: item.duration_seconds }))
       setActiveChapter(result.chapter)
       setBackgroundMode(result.chapter.background_mode ?? 'night')
       setBackgroundUrl(result.chapter.background_url ?? null)
@@ -646,10 +656,10 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   async function openChapter(chapter: Chapter) {
     setLoading(true); setNotice('')
     const response = await fetch(`/api/chapters/${chapter.id}`)
-    const result = await response.json() as { chapter?: Chapter; media?: Array<{ id: string; filename: string; url: string; content_type?: string; duration_seconds?: number | null }> }
+    const result = await response.json() as { chapter?: Chapter; media?: Array<{ id: string; filename: string; caption?: string | null; url: string; content_type?: string; duration_seconds?: number | null }> }
     setLoading(false)
     if (!response.ok || !result.chapter) { setNotice('That room could not be opened.'); return }
-    const loaded = (result.media ?? []).map((item) => ({ id: item.id, title: item.filename, caption: item.content_type === 'video/mp4' ? 'A moving moment from this chapter.' : 'A moment from this chapter.', url: item.url, contentType: item.content_type, durationSeconds: item.duration_seconds }))
+    const loaded = (result.media ?? []).map((item) => ({ id: item.id, title: item.filename, caption: item.caption || (item.content_type === 'video/mp4' ? 'A moving moment from this chapter.' : 'A moment from this chapter.'), url: item.url, contentType: item.content_type, durationSeconds: item.duration_seconds }))
     setActiveChapter(result.chapter); setBackgroundMode(result.chapter.background_mode ?? 'night'); setBackgroundUrl(result.chapter.background_url ?? null); setFinishes(result.chapter.finishes ?? []); setPhotos(loaded.length ? loaded : [{ id: 'empty', title: 'A room waiting for a moment', caption: 'Add a photo to begin.' }]); setSelectedId(loaded[0]?.id ?? 'empty'); setSelectedPhoto(loaded[0] ?? null)
   }
 
@@ -662,16 +672,56 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     setChapters((current) => [result.chapter as Chapter, ...current]); setShowCreate(false); setChapterTitle(''); setChapterSubtitle(''); await openChapter(result.chapter)
   }
 
-  async function uploadFiles(event: React.ChangeEvent<HTMLInputElement>) {
+  function stageFiles(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? [])
     if (!activeChapter || files.length === 0) return
+    const allowed = new Set(['image/png', 'image/webp', 'image/gif', 'video/mp4'])
+    const accepted = files.slice(0, 20).filter((file) => allowed.has(file.type) && file.size <= (file.type === 'video/mp4' ? 25 : 5) * 1024 * 1024)
+    if (accepted.length !== files.length) setNotice('Some files were skipped. Use PNG, WebP, GIF (5 MB) or MP4 (25 MB, 30 seconds).')
+    setPendingUploads(accepted.map((file) => ({ id: crypto.randomUUID(), file, previewUrl: URL.createObjectURL(file) })))
+    setUploadProgress(0)
+    event.target.value = ''
+  }
+
+  function closeUploadPreview() {
+    pendingUploads.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+    setPendingUploads([]); setUploadProgress(0)
+  }
+
+  function movePending(fromId: string, toId: string) {
+    setPendingUploads((current) => {
+      const from = current.findIndex((item) => item.id === fromId); const to = current.findIndex((item) => item.id === toId)
+      if (from < 0 || to < 0 || from === to) return current
+      const next = [...current]; const [item] = next.splice(from, 1); next.splice(to, 0, item); return next
+    })
+  }
+
+  async function confirmUploads() {
+    if (!activeChapter || pendingUploads.length === 0) return
     setLoading(true); setNotice('')
-    for (const file of files) {
+    for (let index = 0; index < pendingUploads.length; index += 1) {
+      const file = pendingUploads[index].file
       const form = new FormData(); form.set('chapterId', activeChapter.id); form.set('file', file); form.set('cleanMetadata', String(cleanMetadata))
       const response = await fetch('/api/media', { method: 'POST', headers: csrfHeaders(), body: form })
       if (!response.ok) { const result = await response.json() as { error?: string }; setNotice(result.error ?? 'One photo could not be added.'); break }
+      setUploadProgress(index + 1)
     }
-    setLoading(false); if (uploadRef.current) uploadRef.current.value = ''; await openChapter(activeChapter)
+    closeUploadPreview(); setLoading(false); await openChapter(activeChapter)
+  }
+
+  async function savePhotoOrder(next: Photo[]) {
+    if (!activeChapter || next.some((photo) => photo.id === 'empty')) return
+    const previous = photos
+    setPhotos(next); setSelectedPhoto(next.find((photo) => photo.id === selectedId) ?? next[0] ?? null)
+    const response = await fetch(`/api/chapters/${activeChapter.id}/media/order`, { method: 'PATCH', headers: { 'content-type': 'application/json', ...csrfHeaders() }, body: JSON.stringify({ mediaIds: next.map((photo) => photo.id) }) })
+    if (!response.ok) { setPhotos(previous); setSelectedPhoto(previous.find((photo) => photo.id === selectedId) ?? previous[0] ?? null); const result = await response.json() as { error?: string }; setNotice(result.error ?? 'That order could not be saved.') }
+    else setNotice('Memory order saved across Room, Orbit and Walk.')
+  }
+
+  function movePhoto(fromId: string, toId: string) {
+    const from = photos.findIndex((photo) => photo.id === fromId); const to = photos.findIndex((photo) => photo.id === toId)
+    if (from < 0 || to < 0 || from === to) return
+    const next = [...photos]; const [item] = next.splice(from, 1); next.splice(to, 0, item); void savePhotoOrder(next)
   }
 
   async function checkoutFinish(product: string) {
@@ -724,6 +774,13 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
       <div className="modal-eyebrow">New chapter</div><h2>Give the room a feeling</h2><p className="modal-copy">A simple title is enough. You can let the photos do the remembering.</p>
       <form onSubmit={createChapter} className="stack-form"><label>Chapter title<input value={chapterTitle} onChange={(event) => setChapterTitle(event.target.value)} placeholder="A weekend by the sea" required /></label><label>Small note<input value={chapterSubtitle} onChange={(event) => setChapterSubtitle(event.target.value)} placeholder="The kind of day I want to keep" /></label><button className="button button-primary" disabled={loading}>{loading ? 'Making room…' : 'Create chapter'}</button></form>
     </Modal>}
+    {pendingUploads.length > 0 && <Modal onClose={() => { if (!loading) closeUploadPreview() }}>
+      <div className="modal-eyebrow">Arrange before upload</div><h2>Set the chapter rhythm.</h2><p className="modal-copy">Drag the memories into order. This same order appears in Room, Orbit and Walk. {cleanMetadata ? 'Image metadata will be cleaned.' : 'Image metadata cleaning is off.'}</p>
+      <div className="upload-preview-list">{pendingUploads.map((item, index) => <div key={item.id} className="upload-preview-item" draggable={!loading} onDragStart={() => setDraggedPendingId(item.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedPendingId) movePending(draggedPendingId, item.id); setDraggedPendingId(null) }}>
+        {item.file.type === 'video/mp4' ? <video src={item.previewUrl} muted /> : <img src={item.previewUrl} alt="" />}<span><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.file.name}</strong><em>{(item.file.size / 1024 / 1024).toFixed(1)} MB</em></span><div><button type="button" aria-label={`Move ${item.file.name} earlier`} disabled={loading || index === 0} onClick={() => movePending(item.id, pendingUploads[index - 1].id)}>←</button><button type="button" aria-label={`Move ${item.file.name} later`} disabled={loading || index === pendingUploads.length - 1} onClick={() => movePending(item.id, pendingUploads[index + 1].id)}>→</button></div>
+      </div>)}</div>
+      {loading && <p className="upload-progress">Placing {uploadProgress} of {pendingUploads.length}…</p>}<div className="modal-actions"><button type="button" className="button button-ghost" disabled={loading} onClick={closeUploadPreview}>Cancel</button><button type="button" className="button button-primary" disabled={loading} onClick={() => void confirmUploads()}>{loading ? 'Placing…' : `Upload ${pendingUploads.length} memories`}</button></div>
+    </Modal>}
     {showFinishes && activeChapter && <Modal onClose={() => setShowFinishes(false)}><div className="modal-eyebrow">Permanent chapter finish</div><h2>Give this room its atmosphere.</h2><p className="modal-copy">One payment attaches the finish to “{activeChapter.title}”. Returning to the chapter never costs again.</p><div className="finish-picker">{chapterFinishes.map(([code, name, price, copy]) => <button key={code} type="button" onClick={() => void checkoutFinish(code)} disabled={loading}><span><strong>{name}</strong><small>{copy}</small></span><em>{price}</em></button>)}</div>{notice && <p className="notice">{notice}</p>}</Modal>}
     <AppHeader authenticated={Boolean(user)} username={user?.username} onSignIn={user ? undefined : () => setShowAuth(true)} onSignOut={user ? () => void signOut() : undefined} />
     <main>
@@ -740,14 +797,14 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
       <section id="room" className="room-section page-wrap">
         <div className="room-heading"><div><div className="eyebrow">The room is open</div><h2>{activeChapter?.title ?? 'A little light from the way home'}</h2><p>{activeChapter?.subtitle ?? 'A demo chapter, made for wandering.'}</p></div><div className="room-meta"><span>{photos.length} scenes</span><span className="meta-divider">·</span><span>{activeModeLabel}</span></div></div>
         <div className="room-stage"><GalleryCanvas photos={photos} mode={mode} backgroundMode={backgroundMode} backgroundUrl={backgroundUrl} finishes={finishes} selectedId={selectedId} onSelect={selectedPhotoChanged} /><div className="stage-glow" /><div className="stage-caption"><span className="caption-line" /> <span>{mode === 'walk' ? 'WASD / arrows to walk · drag to look' : 'Select a frame to linger'}</span></div></div>
-        <div className="room-controls"><div><div className="mode-switch" aria-label="Gallery view mode">{(['room', 'float', 'walk'] as ViewMode[]).map((item) => <button type="button" key={item} className={mode === item ? 'is-active' : ''} onClick={() => setMode(item)}>{item === 'room' ? 'Room wall' : item === 'float' ? 'Orbit' : 'Walk inside'}</button>)}</div><p className="mode-help">{mode === 'room' ? 'See the whole chapter as a composed exhibition wall.' : mode === 'float' ? 'Let memories circle slowly in a weightless constellation.' : 'Move through a corridor with WASD or arrow keys; drag to look around.'}</p></div><div className="room-tools">{activeChapter && <><div className="atmosphere-controls"><label>Room light<select value={backgroundMode} onChange={(event) => void changeBackgroundMode(event.target.value as BackgroundMode)}>{allowedBackgroundModes.map((item) => <option key={item} value={item}>{backgroundLabels[item]}</option>)}</select></label>{tier === 'studio' && <><input ref={backgroundRef} type="file" accept=".png,.webp,.gif,image/png,image/webp,image/gif" hidden onChange={(event) => void uploadBackground(event)} /><button type="button" className="button button-ghost" onClick={() => backgroundRef.current?.click()} disabled={loading}>{backgroundUrl ? 'Replace room image' : 'Use room image'}</button>{backgroundUrl && <button type="button" className="text-button" onClick={() => void clearBackground()} disabled={loading}>Use gradient</button>}</>}</div><label className="clean-toggle"><input type="checkbox" checked={cleanMetadata} onChange={(event) => setCleanMetadata(event.target.checked)} /> Clean image metadata</label><input ref={uploadRef} type="file" accept=".png,.webp,.gif,.mp4,image/png,image/webp,image/gif,video/mp4" multiple hidden onChange={(event) => void uploadFiles(event)} /><button type="button" className="button button-cream" onClick={() => uploadRef.current?.click()} disabled={loading}>{loading ? 'Placing…' : '+ Add memories'}</button><button type="button" className="button button-ghost" onClick={() => setShowFinishes(true)}>Add atmosphere</button></>}{notice && <span className="notice">{notice}</span>}</div></div>
+        <div className="room-controls"><div><div className="mode-switch" aria-label="Gallery view mode">{(['room', 'float', 'walk'] as ViewMode[]).map((item) => <button type="button" key={item} className={mode === item ? 'is-active' : ''} onClick={() => setMode(item)}>{item === 'room' ? 'Room wall' : item === 'float' ? 'Orbit' : 'Walk inside'}</button>)}</div><p className="mode-help">{mode === 'room' ? 'See the whole chapter as a composed exhibition wall.' : mode === 'float' ? 'Let memories circle slowly in a weightless constellation.' : 'Move through a corridor with WASD or arrow keys; drag to look around.'}</p></div><div className="room-tools">{activeChapter && <><div className="atmosphere-controls"><label>Room light<select value={backgroundMode} onChange={(event) => void changeBackgroundMode(event.target.value as BackgroundMode)}>{allowedBackgroundModes.map((item) => <option key={item} value={item}>{backgroundLabels[item]}</option>)}</select></label>{tier === 'studio' && <><input ref={backgroundRef} type="file" accept=".png,.webp,.gif,image/png,image/webp,image/gif" hidden onChange={(event) => void uploadBackground(event)} /><button type="button" className="button button-ghost" onClick={() => backgroundRef.current?.click()} disabled={loading}>{backgroundUrl ? 'Replace room image' : 'Use room image'}</button>{backgroundUrl && <button type="button" className="text-button" onClick={() => void clearBackground()} disabled={loading}>Use gradient</button>}</>}</div><label className="clean-toggle"><input type="checkbox" checked={cleanMetadata} onChange={(event) => setCleanMetadata(event.target.checked)} /> Clean image metadata</label><input ref={uploadRef} type="file" accept=".png,.webp,.gif,.mp4,image/png,image/webp,image/gif,video/mp4" multiple hidden onChange={stageFiles} /><button type="button" className="button button-cream" onClick={() => uploadRef.current?.click()} disabled={loading}>{loading ? 'Placing…' : '+ Add memories'}</button><button type="button" className="button button-ghost" onClick={() => setShowFinishes(true)}>Add atmosphere</button></>}{notice && <span className="notice">{notice}</span>}</div></div>
       </section>
 
       <section className="story-section page-wrap"><div className="story-intro"><div className="eyebrow">One room, many ways back</div><h2>A gallery that waits<br />for your next mood.</h2></div><div className="story-grid"><article><span className="story-number">01</span><h3>Collect gently</h3><p>Drop in a few photos. Story Loom makes the room, the rhythm, and the little pause between each scene.</p></article><article><span className="story-number">02</span><h3>Wander slowly</h3><p>Choose a calm orbit or walk the walls. The gallery is made to be visited, not completed.</p></article><article><span className="story-number">03</span><h3>Keep it yours</h3><p>Your chapters live behind your account. There is no public feed asking you to perform your memories.</p></article></div></section>
 
       {user && <section className="chapters-section page-wrap"><div className="room-heading"><div><div className="eyebrow">Your rooms</div><h2>Return whenever you like.</h2></div><button className="button button-primary" onClick={() => setShowCreate(true)}>+ New chapter</button></div>{chapters.length === 0 ? <div className="empty-state">Your first chapter is one small upload away.</div> : <div className="chapter-list">{chapters.map((chapter) => <Link key={chapter.id} className={`chapter-row ${activeChapter?.id === chapter.id ? 'is-active' : ''}`} to="/chapters/$chapterId" params={{ chapterId: chapter.id }}><span><strong>{chapter.title}</strong><small>{chapter.subtitle}</small></span><span>Open ↗</span></Link>)}</div>}</section>}
 
-      {selectedPhoto && <section className="linger-wrap page-wrap"><div className="linger-section"><div className="linger-mark">✦</div><div><div className="eyebrow">A moment to linger</div><h2>{selectedPhoto.title}</h2><p>{selectedPhoto.caption}</p></div><span className="linger-count">{String(Math.max(photos.findIndex((photo) => photo.id === selectedPhoto.id) + 1, 1)).padStart(2, '0')} / {String(photos.length).padStart(2, '0')}</span></div><div className="memory-ribbon" aria-label="All memories in this chapter">{photos.map((photo, index) => <button key={photo.id} className={photo.id === selectedPhoto.id ? 'is-active' : ''} onClick={() => selectedPhotoChanged(photo.id)}><span>{String(index + 1).padStart(2, '0')}</span><strong>{photo.title}</strong></button>)}</div></section>}
+      {selectedPhoto && <section className="linger-wrap page-wrap"><div className="linger-section"><div className="linger-mark">✦</div><div><div className="eyebrow">A moment to linger</div><h2>{selectedPhoto.title}</h2><p>{selectedPhoto.caption}</p></div><span className="linger-count">{String(Math.max(photos.findIndex((photo) => photo.id === selectedPhoto.id) + 1, 1)).padStart(2, '0')} / {String(photos.length).padStart(2, '0')}</span></div><div className="memory-ribbon" aria-label="All memories in this chapter">{photos.map((photo, index) => <div key={photo.id} className={`ribbon-card ${photo.id === selectedPhoto.id ? 'is-active' : ''}`} draggable={Boolean(activeChapter && photo.id !== 'empty')} onDragStart={() => setDraggedPhotoId(photo.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedPhotoId) movePhoto(draggedPhotoId, photo.id); setDraggedPhotoId(null) }}><button type="button" className="ribbon-select" onClick={() => selectedPhotoChanged(photo.id)}><span>{String(index + 1).padStart(2, '0')}</span><strong>{photo.title}</strong></button>{activeChapter && photo.id !== 'empty' && <div className="ribbon-order"><button type="button" disabled={index === 0} aria-label={`Move ${photo.title} earlier`} onClick={() => movePhoto(photo.id, photos[index - 1].id)}>←</button><button type="button" disabled={index === photos.length - 1} aria-label={`Move ${photo.title} later`} onClick={() => movePhoto(photo.id, photos[index + 1].id)}>→</button></div>}</div>)}</div></section>}
     </main>
     <footer className="loom-footer page-wrap"><span>story loom · made for the moments that stay</span><span>v1 · your private gallery</span></footer>
   </div>

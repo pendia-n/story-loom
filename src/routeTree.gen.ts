@@ -28,6 +28,7 @@ import { Route as ApiAuthLoginRouteImport } from './routes/api/auth/login'
 import { Route as ApiAuthLogoutRouteImport } from './routes/api/auth/logout'
 import { Route as ApiAuthMeRouteImport } from './routes/api/auth/me'
 import { Route as ApiAuthRegisterRouteImport } from './routes/api/auth/register'
+import { Route as ApiAuthUsernameRouteImport } from './routes/api/auth/username'
 import { Route as ApiBillingCheckoutRouteImport } from './routes/api/billing/checkout'
 import { Route as ApiBillingStatusRouteImport } from './routes/api/billing/status'
 import { Route as ApiChaptersChapterIdRouteImport } from './routes/api/chapters/$chapterId'
@@ -44,6 +45,7 @@ import { Route as ApiChaptersChapterIdBackgroundRouteImport } from './routes/api
 import { Route as ApiSecurityTotpDisableRouteImport } from './routes/api/security/totp/disable'
 import { Route as ApiSecurityTotpEnableRouteImport } from './routes/api/security/totp/enable'
 import { Route as ApiSecurityTotpSetupRouteImport } from './routes/api/security/totp/setup'
+import { Route as ApiChaptersChapterIdMediaOrderRouteImport } from './routes/api/chapters/$chapterId/media/order'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -140,6 +142,11 @@ const ApiAuthRegisterRoute = ApiAuthRegisterRouteImport.update({
   path: '/api/auth/register',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAuthUsernameRoute = ApiAuthUsernameRouteImport.update({
+  id: '/api/auth/username',
+  path: '/api/auth/username',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiBillingCheckoutRoute = ApiBillingCheckoutRouteImport.update({
   id: '/api/billing/checkout',
   path: '/api/billing/checkout',
@@ -222,6 +229,12 @@ const ApiSecurityTotpSetupRoute = ApiSecurityTotpSetupRouteImport.update({
   path: '/api/security/totp/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiChaptersChapterIdMediaOrderRoute =
+  ApiChaptersChapterIdMediaOrderRouteImport.update({
+    id: '/media/order',
+    path: '/media/order',
+    getParentRoute: () => ApiChaptersChapterIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -243,6 +256,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/me': typeof ApiAuthMeRoute
   '/api/auth/register': typeof ApiAuthRegisterRouteWithChildren
+  '/api/auth/username': typeof ApiAuthUsernameRoute
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/status': typeof ApiBillingStatusRoute
   '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRouteWithChildren
@@ -259,6 +273,7 @@ export interface FileRoutesByFullPath {
   '/api/security/totp/disable': typeof ApiSecurityTotpDisableRoute
   '/api/security/totp/enable': typeof ApiSecurityTotpEnableRoute
   '/api/security/totp/setup': typeof ApiSecurityTotpSetupRoute
+  '/api/chapters/$chapterId/media/order': typeof ApiChaptersChapterIdMediaOrderRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -280,6 +295,7 @@ export interface FileRoutesByTo {
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/me': typeof ApiAuthMeRoute
   '/api/auth/register': typeof ApiAuthRegisterRouteWithChildren
+  '/api/auth/username': typeof ApiAuthUsernameRoute
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/status': typeof ApiBillingStatusRoute
   '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRouteWithChildren
@@ -296,6 +312,7 @@ export interface FileRoutesByTo {
   '/api/security/totp/disable': typeof ApiSecurityTotpDisableRoute
   '/api/security/totp/enable': typeof ApiSecurityTotpEnableRoute
   '/api/security/totp/setup': typeof ApiSecurityTotpSetupRoute
+  '/api/chapters/$chapterId/media/order': typeof ApiChaptersChapterIdMediaOrderRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -318,6 +335,7 @@ export interface FileRoutesById {
   '/api/auth/logout': typeof ApiAuthLogoutRoute
   '/api/auth/me': typeof ApiAuthMeRoute
   '/api/auth/register': typeof ApiAuthRegisterRouteWithChildren
+  '/api/auth/username': typeof ApiAuthUsernameRoute
   '/api/billing/checkout': typeof ApiBillingCheckoutRoute
   '/api/billing/status': typeof ApiBillingStatusRoute
   '/api/chapters/$chapterId': typeof ApiChaptersChapterIdRouteWithChildren
@@ -334,6 +352,7 @@ export interface FileRoutesById {
   '/api/security/totp/disable': typeof ApiSecurityTotpDisableRoute
   '/api/security/totp/enable': typeof ApiSecurityTotpEnableRoute
   '/api/security/totp/setup': typeof ApiSecurityTotpSetupRoute
+  '/api/chapters/$chapterId/media/order': typeof ApiChaptersChapterIdMediaOrderRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -357,6 +376,7 @@ export interface FileRouteTypes {
     | '/api/auth/logout'
     | '/api/auth/me'
     | '/api/auth/register'
+    | '/api/auth/username'
     | '/api/billing/checkout'
     | '/api/billing/status'
     | '/api/chapters/$chapterId'
@@ -373,6 +393,7 @@ export interface FileRouteTypes {
     | '/api/security/totp/disable'
     | '/api/security/totp/enable'
     | '/api/security/totp/setup'
+    | '/api/chapters/$chapterId/media/order'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -394,6 +415,7 @@ export interface FileRouteTypes {
     | '/api/auth/logout'
     | '/api/auth/me'
     | '/api/auth/register'
+    | '/api/auth/username'
     | '/api/billing/checkout'
     | '/api/billing/status'
     | '/api/chapters/$chapterId'
@@ -410,6 +432,7 @@ export interface FileRouteTypes {
     | '/api/security/totp/disable'
     | '/api/security/totp/enable'
     | '/api/security/totp/setup'
+    | '/api/chapters/$chapterId/media/order'
   id:
     | '__root__'
     | '/'
@@ -431,6 +454,7 @@ export interface FileRouteTypes {
     | '/api/auth/logout'
     | '/api/auth/me'
     | '/api/auth/register'
+    | '/api/auth/username'
     | '/api/billing/checkout'
     | '/api/billing/status'
     | '/api/chapters/$chapterId'
@@ -447,6 +471,7 @@ export interface FileRouteTypes {
     | '/api/security/totp/disable'
     | '/api/security/totp/enable'
     | '/api/security/totp/setup'
+    | '/api/chapters/$chapterId/media/order'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -469,6 +494,7 @@ export interface RootRouteChildren {
   ApiAuthLogoutRoute: typeof ApiAuthLogoutRoute
   ApiAuthMeRoute: typeof ApiAuthMeRoute
   ApiAuthRegisterRoute: typeof ApiAuthRegisterRouteWithChildren
+  ApiAuthUsernameRoute: typeof ApiAuthUsernameRoute
   ApiBillingCheckoutRoute: typeof ApiBillingCheckoutRoute
   ApiBillingStatusRoute: typeof ApiBillingStatusRoute
   ApiSecurityPasswordRoute: typeof ApiSecurityPasswordRoute
@@ -618,6 +644,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthRegisterRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/auth/username': {
+      id: '/api/auth/username'
+      path: '/api/auth/username'
+      fullPath: '/api/auth/username'
+      preLoaderRoute: typeof ApiAuthUsernameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/billing/checkout': {
       id: '/api/billing/checkout'
       path: '/api/billing/checkout'
@@ -730,15 +763,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSecurityTotpSetupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/chapters/$chapterId/media/order': {
+      id: '/api/chapters/$chapterId/media/order'
+      path: '/media/order'
+      fullPath: '/api/chapters/$chapterId/media/order'
+      preLoaderRoute: typeof ApiChaptersChapterIdMediaOrderRouteImport
+      parentRoute: typeof ApiChaptersChapterIdRoute
+    }
   }
 }
 
 interface ApiChaptersChapterIdRouteChildren {
   ApiChaptersChapterIdBackgroundRoute: typeof ApiChaptersChapterIdBackgroundRoute
+  ApiChaptersChapterIdMediaOrderRoute: typeof ApiChaptersChapterIdMediaOrderRoute
 }
 
 const ApiChaptersChapterIdRouteChildren: ApiChaptersChapterIdRouteChildren = {
   ApiChaptersChapterIdBackgroundRoute: ApiChaptersChapterIdBackgroundRoute,
+  ApiChaptersChapterIdMediaOrderRoute: ApiChaptersChapterIdMediaOrderRoute,
 }
 
 const ApiChaptersChapterIdRouteWithChildren =
@@ -800,6 +842,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthLogoutRoute: ApiAuthLogoutRoute,
   ApiAuthMeRoute: ApiAuthMeRoute,
   ApiAuthRegisterRoute: ApiAuthRegisterRouteWithChildren,
+  ApiAuthUsernameRoute: ApiAuthUsernameRoute,
   ApiBillingCheckoutRoute: ApiBillingCheckoutRoute,
   ApiBillingStatusRoute: ApiBillingStatusRoute,
   ApiSecurityPasswordRoute: ApiSecurityPasswordRoute,

@@ -33,6 +33,17 @@ export const Route = createFileRoute('/api/media/$mediaId')({
         await db.prepare('DELETE FROM media WHERE id = ?1 AND owner_id = ?2').bind(params.mediaId, user.id).run()
         return json({ ok: true })
       },
+      PATCH: async ({ request, params }) => {
+        const user = await getCurrentUser(request)
+        if (!user) return json({ error: 'Sign in to edit this memory.' }, { status: 401 })
+        if (!(await requireCsrf(request))) return json({ error: 'Security check failed.' }, { status: 403 })
+        const body = await request.json() as { caption?: string }
+        if (typeof body.caption !== 'string') return json({ error: 'Write a caption to save.' }, { status: 400 })
+        const caption = body.caption.trim().slice(0, 280)
+        const result = await getDatabase().prepare('UPDATE media SET caption = ?1 WHERE id = ?2 AND owner_id = ?3').bind(caption, params.mediaId, user.id).run()
+        if (!result.meta.changes) return json({ error: 'Memory not found.' }, { status: 404 })
+        return json({ ok: true, caption })
+      },
     },
   },
 })
