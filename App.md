@@ -131,6 +131,7 @@ Implemented in the current Cloudflare Worker application:
 - Username/password auth with Worker-compatible PBKDF2 hashing.
 - JWT-backed HttpOnly session cookie using `JWT_SECRET`.
 - CSRF checking on browser state-changing actions.
+- D1-backed rate limits for registration, sign-in, uploads, and Quiet Editor requests without storing raw IP addresses.
 - Optional TOTP setup during registration and later from Security.
 - Optional two-question recovery with independently changeable questions and different answers.
 - PNG, WebP, GIF, and MP4 validation.
@@ -143,7 +144,10 @@ Implemented in the current Cloudflare Worker application:
 - Three.js Room, Orbit, and Walk rendering with atmospheric lighting and the four permanent finishes.
 - Upload-preview ordering and persistent post-upload ordering shared by Room, Orbit, and Walk.
 - Caption editing and explicit destructive controls for individual memories and whole chapters.
+- Confirmed account deletion that cancels an active Stripe subscription before removing D1 records, sessions, and private R2 objects.
 - Quiet Editor image selection with explicit provider consent, ownership validation, and real image input for visual actions.
+- Quiet Editor idempotency keys so retries do not create duplicate completed jobs or consume duplicate allowance.
+- Install guidance plus a versioned service-worker shell that excludes private media and API responses.
 - Two-dimensional fallback when WebGL cannot initialize.
 
 The Quiet Editor has nine named action types and tier-level model fallback routing. Visual actions accept up to eight explicitly selected chapter images with a 12 MB combined sharing limit. The Worker verifies that every selected image belongs to the signed-in user and open chapter, excludes MP4, and sends image content only after the user checks the external-provider consent box. Text-only actions do not send chapter images.

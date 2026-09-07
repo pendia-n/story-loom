@@ -44,6 +44,21 @@ export function getRuntimeEnv() {
   return getEnv()
 }
 
+export async function checkRateLimit(request: Request, scope: string, limit: number, windowSeconds: number, subject?: string) {
+  const identity = subject || request.headers.get('CF-Connecting-IP') || 'unknown'
+  const keyHash = bytesToBase64Url(await sha256(`${scope}:${identity}`))
+  const now = Math.floor(Date.now() / 1000)
+  const resetAt = now + windowSeconds
+  const row = await getDatabase().prepare(
+    `INSERT INTO rate_limits (scope, key_hash, count, reset_at) VALUES (?1, ?2, 1, ?3)
+     ON CONFLICT(scope, key_hash) DO UPDATE SET
+       count = CASE WHEN rate_limits.reset_at <= ?4 THEN 1 ELSE rate_limits.count + 1 END,
+       reset_at = CASE WHEN rate_limits.reset_at <= ?4 THEN ?3 ELSE rate_limits.reset_at END
+     RETURNING count, reset_at`,
+  ).bind(scope, keyHash, resetAt, now).first<{ count: number; reset_at: number }>()
+  return row && row.count > limit ? Math.max(1, row.reset_at - now) : null
+}
+
 function bytesToBase64Url(bytes: Uint8Array) {
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)

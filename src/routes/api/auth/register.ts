@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { appendCookies, createSession, json, passwordValidationError, registerUser, requireSameOrigin, verifyTotp } from '../../../lib/server/auth'
+import { appendCookies, checkRateLimit, createSession, json, passwordValidationError, registerUser, requireSameOrigin, verifyTotp } from '../../../lib/server/auth'
 
 export const Route = createFileRoute('/api/auth/register')({
   server: {
@@ -7,6 +7,8 @@ export const Route = createFileRoute('/api/auth/register')({
       POST: async ({ request }) => {
         try {
           if (!requireSameOrigin(request)) return json({ error: 'Invalid request origin.' }, { status: 403 })
+          const retryAfter = await checkRateLimit(request, 'register', 5, 60 * 60)
+          if (retryAfter) return json({ error: 'Too many account attempts. Wait before trying again.' }, { status: 429, headers: { 'retry-after': String(retryAfter) } })
           const body = await request.json() as { username?: string; password?: string; totpSecret?: string; totpCode?: string }
           const username = body.username?.trim().toLowerCase() ?? ''
           const password = body.password ?? ''

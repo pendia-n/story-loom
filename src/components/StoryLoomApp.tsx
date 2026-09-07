@@ -38,6 +38,7 @@ type Chapter = {
 }
 
 type User = { id: string; username: string }
+type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
 
 const demoPhotos: Photo[] = [
   { id: 'demo-1', title: 'The first warm day', caption: 'A little more light than yesterday.' },
@@ -657,7 +658,10 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   const [editorMediaIds, setEditorMediaIds] = useState<string[]>([])
   const [editorConsent, setEditorConsent] = useState(false)
   const [editorResult, setEditorResult] = useState('')
+  const [editorRequestId, setEditorRequestId] = useState(() => crypto.randomUUID())
   const [captionDraft, setCaptionDraft] = useState(selectedPhoto?.caption ?? '')
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null)
+  const [showInstallHelp, setShowInstallHelp] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
   const backgroundRef = useRef<HTMLInputElement>(null)
   const activeModeLabel = useMemo(() => ({ room: 'Curated wall', float: 'Slow orbit', walk: 'First-person walk' }[mode]), [mode])
@@ -665,6 +669,12 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   const editorNeedsImages = quietEditorActions.find(([code]) => code === editorKind)?.[2] ?? false
 
   useEffect(() => { setCaptionDraft(selectedPhoto?.caption ?? '') }, [selectedPhoto])
+
+  useEffect(() => {
+    const capture = (event: Event) => { event.preventDefault(); setInstallPrompt(event as InstallPromptEvent) }
+    window.addEventListener('beforeinstallprompt', capture)
+    return () => window.removeEventListener('beforeinstallprompt', capture)
+  }, [])
 
   useEffect(() => {
     void fetch('/api/auth/me').then(async (response) => {
@@ -785,14 +795,14 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
 
   function openEditor() {
     const defaultImage = selectedPhoto && selectedPhoto.id !== 'empty' && selectedPhoto.contentType !== 'video/mp4' ? [selectedPhoto.id] : []
-    setEditorMediaIds(defaultImage); setEditorInstruction(''); setEditorConsent(false); setEditorResult(''); setShowEditor(true)
+    setEditorMediaIds(defaultImage); setEditorInstruction(''); setEditorConsent(false); setEditorResult(''); setEditorRequestId(crypto.randomUUID()); setShowEditor(true)
   }
 
   async function runEditor(event: React.FormEvent) {
     event.preventDefault()
     if (!activeChapter) return
     setLoading(true); setEditorResult(''); setNotice('')
-    const response = await fetch('/api/ai/chapter', { method: 'POST', headers: { 'content-type': 'application/json', ...csrfHeaders() }, body: JSON.stringify({ chapterId: activeChapter.id, kind: editorKind, instruction: editorInstruction, mediaIds: editorNeedsImages ? editorMediaIds : [], shareWithProvider: editorConsent }) })
+    const response = await fetch('/api/ai/chapter', { method: 'POST', headers: { 'content-type': 'application/json', ...csrfHeaders() }, body: JSON.stringify({ chapterId: activeChapter.id, kind: editorKind, instruction: editorInstruction, mediaIds: editorNeedsImages ? editorMediaIds : [], idempotencyKey: editorRequestId, shareWithProvider: editorConsent }) })
     const result = await response.json() as { suggestion?: string; error?: string }
     setLoading(false)
     if (!response.ok || !result.suggestion) { setNotice(result.error ?? 'The Quiet Editor could not finish.'); return }
@@ -829,6 +839,13 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     setChapters((current) => current.filter((item) => item.id !== chapter.id))
     if (activeChapter?.id === chapter.id) window.location.assign('/app')
     else setNotice('Chapter and its stored memories were deleted.')
+  }
+
+  async function installApp() {
+    if (!installPrompt) { setShowInstallHelp(true); return }
+    await installPrompt.prompt()
+    const choice = await installPrompt.userChoice
+    if (choice.outcome === 'accepted') setInstallPrompt(null)
   }
 
   async function checkoutFinish(product: string) {
@@ -891,14 +908,15 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     </Modal>}
     {showEditor && activeChapter && <Modal onClose={() => { if (!loading) setShowEditor(false) }}>
       <div className="modal-eyebrow">Quiet Editor</div><h2>Ask for one gentle edit.</h2><p className="modal-copy">Nothing is sent until you choose an action, select the memories, and confirm. One completed action uses one included request.</p>
-      <form className="stack-form" onSubmit={runEditor}><label>Editor action<select value={editorKind} onChange={(event) => { const next = event.target.value as QuietEditorKind; setEditorKind(next); setEditorResult('') }}>{quietEditorActions.map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></label>
-      {editorNeedsImages && <fieldset className="editor-memory-picker"><legend>Images to share · up to 8 / 12 MB</legend>{photos.filter((photo) => photo.id !== 'empty' && photo.contentType !== 'video/mp4').map((photo) => <label key={photo.id}><input type="checkbox" checked={editorMediaIds.includes(photo.id)} onChange={(event) => setEditorMediaIds((current) => event.target.checked ? [...current, photo.id].slice(0, 8) : current.filter((id) => id !== photo.id))} /><span>{photo.title}</span></label>)}</fieldset>}
-      <label>Your direction<textarea value={editorInstruction} onChange={(event) => setEditorInstruction(event.target.value)} maxLength={800} placeholder="Keep it warm and factual; do not invent details." required /></label>
+      <form className="stack-form" onSubmit={runEditor}><label>Editor action<select value={editorKind} onChange={(event) => { const next = event.target.value as QuietEditorKind; setEditorKind(next); setEditorResult(''); setEditorRequestId(crypto.randomUUID()) }}>{quietEditorActions.map(([code, label]) => <option value={code} key={code}>{label}</option>)}</select></label>
+      {editorNeedsImages && <fieldset className="editor-memory-picker"><legend>Images to share · up to 8 / 12 MB</legend>{photos.filter((photo) => photo.id !== 'empty' && photo.contentType !== 'video/mp4').map((photo) => <label key={photo.id}><input type="checkbox" checked={editorMediaIds.includes(photo.id)} onChange={(event) => { setEditorMediaIds((current) => event.target.checked ? [...current, photo.id].slice(0, 8) : current.filter((id) => id !== photo.id)); setEditorRequestId(crypto.randomUUID()) }} /><span>{photo.title}</span></label>)}</fieldset>}
+      <label>Your direction<textarea value={editorInstruction} onChange={(event) => { setEditorInstruction(event.target.value); setEditorRequestId(crypto.randomUUID()) }} maxLength={800} placeholder="Keep it warm and factual; do not invent details." required /></label>
       <label className="provider-consent"><input type="checkbox" checked={editorConsent} onChange={(event) => setEditorConsent(event.target.checked)} required /><span>I understand this direction{editorNeedsImages ? ' and the selected images' : ''} will be sent to OpenRouter and its selected model for this request.</span></label>
       <button className="button button-primary" disabled={loading || (editorNeedsImages && editorMediaIds.length === 0)}>{loading ? 'Listening…' : 'Ask Quiet Editor'}</button></form>
       {notice && <p className="form-error">{notice}</p>}{editorResult && <div className="editor-result"><div className="eyebrow">Editable suggestion</div><p>{editorResult}</p><button type="button" className="button button-ghost" onClick={() => void navigator.clipboard.writeText(editorResult)}>Copy suggestion</button></div>}
     </Modal>}
     {showFinishes && activeChapter && <Modal onClose={() => setShowFinishes(false)}><div className="modal-eyebrow">Permanent chapter finish</div><h2>Give this room its atmosphere.</h2><p className="modal-copy">One payment attaches the finish to “{activeChapter.title}”. Returning to the chapter never costs again.</p><div className="finish-picker">{chapterFinishes.map(([code, name, price, copy]) => { const owned = finishes.includes(code); return <button key={code} type="button" onClick={() => void checkoutFinish(code)} disabled={loading || owned}><span><strong>{name}</strong><small>{copy}</small></span><em>{owned ? 'Owned' : price}</em></button> })}</div>{notice && <p className="notice">{notice}</p>}</Modal>}
+    {showInstallHelp && <Modal onClose={() => setShowInstallHelp(false)}><div className="modal-eyebrow">Keep Story Loom close</div><h2>Add it to your home screen.</h2><p className="modal-copy">On iPhone or iPad, open this page in Safari, tap Share, then “Add to Home Screen.” On desktop or Android, use your browser’s Install or Add to Home Screen command. Your private media still loads from the network after sign-in and is never stored permanently by the offline shell.</p><button type="button" className="button button-primary" onClick={() => setShowInstallHelp(false)}>Got it</button></Modal>}
     <AppHeader authenticated={Boolean(user)} username={user?.username} onSignIn={user ? undefined : () => setShowAuth(true)} onSignOut={user ? () => void signOut() : undefined} />
     <main>
       <section className="hero-section page-wrap">
@@ -906,7 +924,7 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
           <div className="eyebrow">Your life, on its own red carpet</div>
           <h1>Keep the glow<br /><em>of every chapter.</em></h1>
           <p>Turn the moments you already have into a room you can return to. No arranging files. No learning a tool. Just bring the light in.</p>
-          <div className="hero-actions"><button className="button button-primary" onClick={() => user ? setShowCreate(true) : setShowAuth(true)}>Start a chapter <span>↗</span></button><a className="quiet-link" href="#room">Walk through the example <span>↓</span></a></div>
+          <div className="hero-actions"><button className="button button-primary" onClick={() => user ? setShowCreate(true) : setShowAuth(true)}>Start a chapter <span>↗</span></button><button type="button" className="quiet-link install-link" onClick={() => void installApp()}>Install Story Loom <span>↓</span></button><a className="quiet-link" href="#room">Walk through the example <span>↓</span></a></div>
         </div>
         <div className="hero-note"><span>01</span><p>Some memories<br />deserve a little<br /><strong>more atmosphere.</strong></p></div>
       </section>

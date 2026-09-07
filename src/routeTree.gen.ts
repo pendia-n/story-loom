@@ -17,6 +17,7 @@ import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as RecoveryRouteImport } from './routes/recovery'
 import { Route as SecurityRouteImport } from './routes/security'
+import { Route as ApiAccountRouteImport } from './routes/api/account'
 import { Route as ApiChaptersRouteImport } from './routes/api/chapters'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiMediaRouteImport } from './routes/api/media'
@@ -85,6 +86,11 @@ const RecoveryRoute = RecoveryRouteImport.update({
 const SecurityRoute = SecurityRouteImport.update({
   id: '/security',
   path: '/security',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAccountRoute = ApiAccountRouteImport.update({
+  id: '/api/account',
+  path: '/api/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChaptersRoute = ApiChaptersRouteImport.update({
@@ -245,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/recovery': typeof RecoveryRoute
   '/security': typeof SecurityRoute
+  '/api/account': typeof ApiAccountRoute
   '/api/chapters': typeof ApiChaptersRouteWithChildren
   '/api/health': typeof ApiHealthRoute
   '/api/media': typeof ApiMediaRouteWithChildren
@@ -284,6 +291,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/recovery': typeof RecoveryRoute
   '/security': typeof SecurityRoute
+  '/api/account': typeof ApiAccountRoute
   '/api/chapters': typeof ApiChaptersRouteWithChildren
   '/api/health': typeof ApiHealthRoute
   '/api/media': typeof ApiMediaRouteWithChildren
@@ -324,6 +332,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/recovery': typeof RecoveryRoute
   '/security': typeof SecurityRoute
+  '/api/account': typeof ApiAccountRoute
   '/api/chapters': typeof ApiChaptersRouteWithChildren
   '/api/health': typeof ApiHealthRoute
   '/api/media': typeof ApiMediaRouteWithChildren
@@ -365,6 +374,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/recovery'
     | '/security'
+    | '/api/account'
     | '/api/chapters'
     | '/api/health'
     | '/api/media'
@@ -404,6 +414,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/recovery'
     | '/security'
+    | '/api/account'
     | '/api/chapters'
     | '/api/health'
     | '/api/media'
@@ -443,6 +454,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/recovery'
     | '/security'
+    | '/api/account'
     | '/api/chapters'
     | '/api/health'
     | '/api/media'
@@ -483,6 +495,7 @@ export interface RootRouteChildren {
   ProfileRoute: typeof ProfileRoute
   RecoveryRoute: typeof RecoveryRoute
   SecurityRoute: typeof SecurityRoute
+  ApiAccountRoute: typeof ApiAccountRoute
   ApiChaptersRoute: typeof ApiChaptersRouteWithChildren
   ApiHealthRoute: typeof ApiHealthRoute
   ApiMediaRoute: typeof ApiMediaRouteWithChildren
@@ -565,6 +578,13 @@ declare module '@tanstack/react-router' {
       path: '/security'
       fullPath: '/security'
       preLoaderRoute: typeof SecurityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/account': {
+      id: '/api/account'
+      path: '/api/account'
+      fullPath: '/api/account'
+      preLoaderRoute: typeof ApiAccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/chapters': {
@@ -831,6 +851,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileRoute: ProfileRoute,
   RecoveryRoute: RecoveryRoute,
   SecurityRoute: SecurityRoute,
+  ApiAccountRoute: ApiAccountRoute,
   ApiChaptersRoute: ApiChaptersRouteWithChildren,
   ApiHealthRoute: ApiHealthRoute,
   ApiMediaRoute: ApiMediaRouteWithChildren,

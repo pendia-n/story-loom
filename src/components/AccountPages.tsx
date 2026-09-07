@@ -59,7 +59,7 @@ export function ProfilePage() {
     {!checked || !user ? <p className="account-copy">Opening your profile…</p> : <>
       <div className="eyebrow">Your profile</div><h1>Keep the room yours.</h1>
       <div className="account-grid">
-        <section className="account-card"><span className="card-label">Username</span><h2>@{user.username}</h2><p>Your gallery is private unless you deliberately create a share.</p><Link className="button button-primary" to="/security">Open security</Link></section>
+        <section className="account-card"><span className="card-label">Username</span><h2>@{user.username}</h2><p>Your gallery is private. Story Loom v1 does not create public share links.</p><Link className="button button-primary" to="/security">Open security</Link></section>
         <section className="account-card"><span className="card-label">Plan</span><h2>{billing?.subscription?.tier ?? 'Keepsake'}</h2><p>{billing?.subscription?.status ?? 'Free plan'} · {billing?.purchases?.length ?? 0} permanent add-ons</p><Link className="button button-cream" to="/pricing">View pricing</Link></section>
       </div>
     </>}
@@ -75,6 +75,7 @@ export function SecurityPage() {
   const [question1, setQuestion1] = useState(''); const [answer1, setAnswer1] = useState('')
   const [question2, setQuestion2] = useState(''); const [answer2, setAnswer2] = useState('')
   const [notice, setNotice] = useState('')
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
   async function refresh() {
     const next = await getUser(); setChecked(true); setUser(next)
     if (!next) return window.location.replace('/recovery')
@@ -120,6 +121,14 @@ export function SecurityPage() {
     setNotice(response.ok ? 'Password changed.' : result.error ?? 'Could not change password.')
     if (response.ok) setPassword('')
   }
+  async function deleteAccount(event: React.FormEvent) {
+    event.preventDefault()
+    if (!window.confirm('Permanently delete this account, every chapter, and every stored memory? This cannot be undone.')) return
+    const response = await fetch('/api/account', { method: 'DELETE', headers: { 'content-type': 'application/json', ...csrfHeaders() }, body: JSON.stringify({ confirmUsername: deleteConfirmation }) })
+    const result = await response.json() as { error?: string }
+    if (!response.ok) { setNotice(result.error ?? 'The account was not deleted.'); return }
+    window.location.replace('/')
+  }
   if (!checked || !user) return <Page><main className="account-page page-wrap"><p className="account-copy">Checking your session…</p></main></Page>
   return <Page authenticated><main className="account-page page-wrap">
     <div className="eyebrow">Security</div><h1>Choose your way back in.</h1>
@@ -131,6 +140,7 @@ export function SecurityPage() {
       </section>
       <section className="account-card"><span className="card-label">Two-question recovery</span><h2>{status?.questionsEnabled ? 'Connected' : 'Optional'}</h2><p>Choose from 15 prompts. Each question and answer can be changed independently; the two answers must differ.</p><div className="independent-questions"><form className="stack-form" onSubmit={(event) => void saveQuestion(event, 1)}><label>Question one<select value={question1} onChange={(event) => setQuestion1(event.target.value)}>{SECURITY_QUESTIONS.map((question) => <option value={question} key={question}>{question}</option>)}</select></label><label>New answer one<input value={answer1} onChange={(event) => setAnswer1(event.target.value)} minLength={3} placeholder={status?.questions[0] ? 'Leave blank to keep the current answer' : 'Required for a new question'} /></label><button className="button button-cream">Save question one</button></form><form className="stack-form" onSubmit={(event) => void saveQuestion(event, 2)}><label>Question two<select value={question2} onChange={(event) => setQuestion2(event.target.value)}>{SECURITY_QUESTIONS.map((question) => <option value={question} key={question}>{question}</option>)}</select></label><label>New answer two<input value={answer2} onChange={(event) => setAnswer2(event.target.value)} minLength={3} placeholder={status?.questions[1] ? 'Leave blank to keep the current answer' : 'Required for a new question'} /></label><button className="button button-cream">Save question two</button></form></div></section>
       <section className="account-card"><span className="card-label">Password</span><h2>Change it directly</h2><p>A signed-in account does not need to repeat TOTP or recovery answers.</p><form className="inline-form" onSubmit={(event) => void changePassword(event)}><input type="password" minLength={12} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="New strong password, 12+ characters" required /><button className="button button-primary">Change password</button></form></section>
+      <section className="account-card danger-card"><span className="card-label">Delete account</span><h2>Remove every room</h2><p>This permanently deletes every chapter, image, video, custom background, recovery method, and session. An active Stripe subscription is canceled first; if cancellation fails, nothing is deleted.</p><form className="stack-form" onSubmit={deleteAccount}><label>Type {user.username} to confirm<input value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} autoComplete="off" required /></label><button className="button danger-button" disabled={deleteConfirmation.trim().toLowerCase() !== user.username}>Delete my account permanently</button></form></section>
       {notice && <p className="notice">{notice}</p>}
     </div>
   </main></Page>

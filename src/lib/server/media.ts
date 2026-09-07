@@ -144,6 +144,67 @@ export function isLikelyImage(bytes: Uint8Array, contentType: string) {
   return false
 }
 
+function uint24le(bytes: Uint8Array, offset: number) {
+  return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16)
+}
+
+export function inspectImage(bytes: Uint8Array, contentType: string) {
+  if (!isLikelyImage(bytes, contentType)) return null
+  if (contentType === 'image/png') {
+    if (bytes.length < 24 || ascii(bytes, 12, 4) !== 'IHDR') return null
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    return { width: view.getUint32(16), height: view.getUint32(20), frames: 1, durationSeconds: 0 }
+  }
+  if (contentType === 'image/gif') {
+    if (bytes.length < 13) return null
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    const width = view.getUint16(6, true); const height = view.getUint16(8, true)
+    let frames = 0; let durationCentiseconds = 0; let offset = 13
+    if (bytes[10] & 0x80) offset += 3 * (2 ** ((bytes[10] & 7) + 1))
+    while (offset < bytes.length) {
+      if (bytes[offset] === 0x3b) break
+      if (bytes[offset] === 0x2c) {
+        frames += 1
+        if (offset + 10 > bytes.length) return null
+        let data = offset + 10
+        if (bytes[offset + 9] & 0x80) data += 3 * (2 ** ((bytes[offset + 9] & 7) + 1))
+        if (data >= bytes.length) return null
+        offset = readGifSubBlocks(bytes, data + 1) ?? bytes.length
+        continue
+      }
+      if (bytes[offset] !== 0x21 || offset + 2 >= bytes.length) return null
+      const label = bytes[offset + 1]
+      if (label === 0xf9 && offset + 8 <= bytes.length && bytes[offset + 2] === 4) {
+        durationCentiseconds += bytes[offset + 4] | (bytes[offset + 5] << 8)
+        offset += 8
+      } else {
+        const headerSize = bytes[offset + 2]
+        offset = readGifSubBlocks(bytes, offset + 3 + headerSize) ?? bytes.length
+      }
+    }
+    return frames ? { width, height, frames, durationSeconds: durationCentiseconds / 100 } : null
+  }
+  let width = 0; let height = 0; let frames = 0; let durationMs = 0; let offset = 12
+  while (offset + 8 <= bytes.length) {
+    const type = ascii(bytes, offset, 4)
+    const size = new DataView(bytes.buffer, bytes.byteOffset + offset + 4, 4).getUint32(0, true)
+    const payload = offset + 8; const end = payload + size + (size % 2)
+    if (end > bytes.length) return null
+    if (type === 'VP8X' && size >= 10) { width = uint24le(bytes, payload + 4) + 1; height = uint24le(bytes, payload + 7) + 1 }
+    if (type === 'VP8 ' && size >= 10 && bytes[payload + 3] === 0x9d && bytes[payload + 4] === 0x01 && bytes[payload + 5] === 0x2a) {
+      width ||= (bytes[payload + 6] | (bytes[payload + 7] << 8)) & 0x3fff
+      height ||= (bytes[payload + 8] | (bytes[payload + 9] << 8)) & 0x3fff
+    }
+    if (type === 'VP8L' && size >= 5 && bytes[payload] === 0x2f) {
+      const bits = (bytes[payload + 1] | (bytes[payload + 2] << 8) | (bytes[payload + 3] << 16) | (bytes[payload + 4] << 24)) >>> 0
+      width ||= (bits & 0x3fff) + 1; height ||= ((bits >>> 14) & 0x3fff) + 1
+    }
+    if (type === 'ANMF' && size >= 16) { frames += 1; durationMs += uint24le(bytes, payload + 12) }
+    offset = end
+  }
+  return width && height ? { width, height, frames: Math.max(frames, 1), durationSeconds: durationMs / 1000 } : null
+}
+
 export function isLikelyMp4(bytes: Uint8Array) {
   return bytes.length >= 12 && ascii(bytes, 4, 4) === 'ftyp'
 }

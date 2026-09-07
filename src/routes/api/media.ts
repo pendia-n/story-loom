@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { getCurrentUser, getDatabase, getMediaBucket, json, requireCsrf } from '../../lib/server/auth'
-import { cleanseImageMetadata, isLikelyImage, isLikelyMp4, mp4DurationSeconds } from '../../lib/server/media'
+import { checkRateLimit, getCurrentUser, getDatabase, getMediaBucket, json, requireCsrf } from '../../lib/server/auth'
+import { cleanseImageMetadata, inspectImage, isLikelyImage, isLikelyMp4, mp4DurationSeconds } from '../../lib/server/media'
 import { getUserLimits, getUserTier } from '../../lib/server/limits'
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -15,6 +15,8 @@ export const Route = createFileRoute('/api/media')({
         const user = await getCurrentUser(request)
         if (!user) return json({ error: 'Sign in before adding memories.' }, { status: 401 })
         if (!(await requireCsrf(request))) return json({ error: 'Security check failed. Refresh and try again.' }, { status: 403 })
+        const retryAfter = await checkRateLimit(request, 'media-upload', 60, 60, user.id)
+        if (retryAfter) return json({ error: 'Uploads are moving too quickly. Wait a moment and continue.' }, { status: 429, headers: { 'retry-after': String(retryAfter) } })
         const form = await request.formData()
         const chapterId = String(form.get('chapterId') ?? '')
         const file = form.get('file')
@@ -49,10 +51,19 @@ export const Route = createFileRoute('/api/media')({
           }
         } else if (cleanRequested) {
           if (!isLikelyImage(originalBytes, file.type)) return json({ error: 'The image bytes do not match PNG, WebP, or GIF.' }, { status: 400 })
+          const image = inspectImage(originalBytes, file.type)
+          if (!image) return json({ error: 'That image structure is invalid.' }, { status: 400 })
+          if (image.width > 8192 || image.height > 8192 || image.width * image.height > 40_000_000) return json({ error: 'Images may be up to 8192px per side and 40 megapixels.' }, { status: 400 })
+          if (image.frames > 60 || image.durationSeconds > 8) return json({ error: 'Animated images may contain up to 60 frames and 8 seconds.' }, { status: 400 })
           const cleaned = cleanseImageMetadata(originalBytes, file.type)
           storedBytes = cleaned.bytes
           metadataCleaned = cleaned.cleaned ? 1 : 0
-        } else if (!isLikelyImage(originalBytes, file.type)) return json({ error: 'The image bytes do not match PNG, WebP, or GIF.' }, { status: 400 })
+        } else {
+          const image = inspectImage(originalBytes, file.type)
+          if (!image) return json({ error: 'The image bytes do not match a valid PNG, WebP, or GIF.' }, { status: 400 })
+          if (image.width > 8192 || image.height > 8192 || image.width * image.height > 40_000_000) return json({ error: 'Images may be up to 8192px per side and 40 megapixels.' }, { status: 400 })
+          if (image.frames > 60 || image.durationSeconds > 8) return json({ error: 'Animated images may contain up to 60 frames and 8 seconds.' }, { status: 400 })
+        }
 
         const id = crypto.randomUUID()
         const objectKey = `${user.id}/${chapterId}/${id}`

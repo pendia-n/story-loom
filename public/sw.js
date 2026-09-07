@@ -1,4 +1,4 @@
-const CACHE_NAME = 'story-loom-shell-v2'
+const CACHE_NAME = 'story-loom-shell-v3'
 const SHELL = ['/', '/manifest.webmanifest', '/story.svg', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', (event) => {
