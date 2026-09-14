@@ -347,6 +347,7 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
     const interactive: Three.Object3D[] = []
     const videos: HTMLVideoElement[] = []
     const videoById = new Map<string, HTMLVideoElement>()
+    const corridorLength = Math.max(photos.length, 1) * 3.65
     photos.forEach((photo, index) => {
       const texture = artworkTexture(photo, index)
       const frame = new THREE.Group()
@@ -397,6 +398,8 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
           ownedTextures.add(loaded)
           ;(plane.material as Three.MeshBasicMaterial).map = loaded
           ;(plane.material as Three.MeshStandardMaterial).needsUpdate = true
+          const aspect = loaded.image?.width && loaded.image?.height ? loaded.image.width / loaded.image.height : 4 / 3
+          plane.scale.set(aspect >= 1 ? 1 : aspect, aspect >= 1 ? 1 / aspect : 1, 1)
           texture.dispose()
         })
       }
@@ -408,6 +411,8 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
     const keys = new Set<string>()
     const drag = { active: false, x: 0, yaw: 0 }
     const auto = { active: false }
+    const velocity = { x: 0, z: 0 }
+    let targetZ: number | null = null
     const onPointerDown = (event: PointerEvent) => { drag.active = true; drag.x = event.clientX }
     const onPointerUp = () => { drag.active = false }
     const onPointerMove = (event: PointerEvent) => {
@@ -427,6 +432,8 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
       if (hit?.object.userData.itemId) {
         const id = String(hit.object.userData.itemId)
         onSelect(id)
+        const frame = hit.object.parent
+        if (frame) targetZ = frame.position.z + 1.55
         const video = videoById.get(id)
         if (video) {
           if (video.paused) void video.play().catch(() => undefined)
@@ -436,12 +443,12 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
     }
     const onWalkCommand = (event: Event) => {
       const command = String((event as CustomEvent).detail ?? '')
-      if (command === 'entrance') { camera.position.set(0, 2.15, 7.2); drag.yaw = 0; auto.active = false; return }
+      if (command === 'entrance') { camera.position.set(0, 2.15, 7.2); targetZ = null; velocity.x = 0; velocity.z = 0; drag.yaw = 0; auto.active = false; return }
       if (command === 'auto-on' || command === 'auto-off') { auto.active = command === 'auto-on'; return }
       if (command === 'next') {
         const current = Math.max(photos.findIndex((photo) => photo.id === selectionRef.current), -1)
         const next = photos[(current + 1) % Math.max(photos.length, 1)]
-        if (next) { onSelect(next.id); camera.position.z = THREE.MathUtils.clamp(6.4 - Math.floor((current + 1) / 2) * 3.45, -5.2, 7.2) }
+        if (next) { onSelect(next.id); targetZ = 6.4 - Math.floor((current + 1) / 2) * 3.65 }
         return
       }
       const map: Record<string, string> = { forward: 'w', back: 's', left: 'a', right: 'd' }
@@ -490,8 +497,19 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
         if (keys.has('s') || keys.has('arrowdown')) direction.addScaledVector(forward, -speed)
         if (keys.has('a') || keys.has('arrowleft')) direction.addScaledVector(right, -speed)
         if (keys.has('d') || keys.has('arrowright')) direction.addScaledVector(right, speed)
-        camera.position.x = THREE.MathUtils.clamp(camera.position.x + direction.x, -3.6, 3.6)
-        camera.position.z = THREE.MathUtils.clamp(camera.position.z + direction.z, -5.4, 7.4)
+        velocity.x = velocity.x * 0.88 + direction.x * 0.12
+        velocity.z = velocity.z * 0.88 + direction.z * 0.12
+        if (targetZ !== null) {
+          const delta = targetZ - camera.position.z
+          velocity.z += THREE.MathUtils.clamp(delta * 0.012, -0.045, 0.045)
+          if (Math.abs(delta) < 0.03) targetZ = null
+        }
+        camera.position.x = THREE.MathUtils.clamp(camera.position.x + velocity.x, -3.6, 3.6)
+        camera.position.z += velocity.z
+        const loopStart = 7.4
+        const loopEnd = 5.2 - corridorLength
+        if (camera.position.z < loopEnd) camera.position.z = loopStart
+        if (camera.position.z > loopStart + 0.8) camera.position.z = loopEnd
         camera.rotation.y = THREE.MathUtils.lerp(camera.rotation.y, drag.yaw, 0.08)
       }
       renderer.render(scene, camera)
