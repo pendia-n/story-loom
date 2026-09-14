@@ -4,7 +4,7 @@ import { cleanseImageMetadata, isLikelyImage } from '../../../../lib/server/medi
 import { getUserTier } from '../../../../lib/server/limits'
 
 const MAX_BACKGROUND_BYTES = 5 * 1024 * 1024
-const ALLOWED_TYPES = new Set(['image/png', 'image/webp', 'image/gif'])
+const ALLOWED_TYPES = new Set(['image/png', 'image/gif'])
 const MODES = new Set(['morning', 'night', 'twilight', 'afternoon', 'sunrise'])
 
 export const Route = createFileRoute('/api/chapters/$chapterId/background')({
@@ -40,14 +40,14 @@ export const Route = createFileRoute('/api/chapters/$chapterId/background')({
         if (await getUserTier(user.id) !== 'studio') return json({ error: 'Custom backgrounds require Studio.' }, { status: 402 })
         const form = await request.formData()
         const file = form.get('file')
-        if (!(file instanceof File) || !ALLOWED_TYPES.has(file.type)) return json({ error: 'Use a PNG, WebP, or GIF background.' }, { status: 400 })
+        if (!(file instanceof File) || !ALLOWED_TYPES.has(file.type)) return json({ error: 'Use a PNG or GIF background.' }, { status: 400 })
         if (file.size === 0 || file.size > MAX_BACKGROUND_BYTES) return json({ error: 'Use an image up to 5 MB.' }, { status: 400 })
         const db = getDatabase()
         const chapter = await db.prepare('SELECT background_object_key FROM chapters WHERE id = ?1 AND owner_id = ?2')
           .bind(params.chapterId, user.id).first<{ background_object_key: string | null }>()
         if (!chapter) return json({ error: 'Chapter not found.' }, { status: 404 })
         const original = new Uint8Array(await file.arrayBuffer())
-        if (!isLikelyImage(original, file.type)) return json({ error: 'The image bytes do not match PNG, WebP, or GIF.' }, { status: 400 })
+        if (!isLikelyImage(original, file.type)) return json({ error: 'The image bytes do not match PNG or GIF.' }, { status: 400 })
         const cleaned = cleanseImageMetadata(original, file.type)
         const objectKey = `${user.id}/${params.chapterId}/background-${crypto.randomUUID()}`
         await getMediaBucket().put(objectKey, cleaned.bytes, { httpMetadata: { contentType: file.type, cacheControl: 'private, max-age=3600' }, customMetadata: { filename: 'chapter-background', metadataCleaned: String(cleaned.cleaned) } })

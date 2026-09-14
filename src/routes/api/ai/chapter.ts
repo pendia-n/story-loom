@@ -66,7 +66,7 @@ export const Route = createFileRoute('/api/ai/chapter')({
           let totalBytes = 0
           for (const id of requestedMediaIds) {
             const item = byId.get(id)!
-            if (!['image/png', 'image/webp', 'image/gif'].includes(item.content_type)) return json({ error: 'Quiet Editor image actions do not send MP4 files.' }, { status: 400 })
+            if (!['image/png', 'image/gif'].includes(item.content_type)) return json({ error: 'Quiet Editor image actions only send PNG or GIF files.' }, { status: 400 })
             totalBytes += item.byte_size
             if (totalBytes > MAX_SHARED_BYTES) return json({ error: 'Selected images exceed the 12 MB editor sharing limit.' }, { status: 400 })
             const object = await getMediaBucket().get(item.object_key)

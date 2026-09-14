@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { getCurrentUser, getDatabase, getMediaBucket, json, requireCsrf } from '../../../lib/server/auth'
+import { getUserLimits, getUserTier } from '../../../lib/server/limits'
 
 export const Route = createFileRoute('/api/chapters/$chapterId')({
   server: {
@@ -16,7 +17,11 @@ export const Route = createFileRoute('/api/chapters/$chapterId')({
           'SELECT id, object_key, filename, content_type, byte_size, caption, sort_order, duration_seconds, created_at FROM media WHERE chapter_id = ?1 AND owner_id = ?2 ORDER BY sort_order ASC, created_at ASC',
         ).bind(params.chapterId, user.id).all()
         const finishes = await db.prepare("SELECT product_code FROM purchases WHERE chapter_id = ?1 AND status = 'paid' AND product_code IN ('golden-hour', 'rain-window', 'stardust-ceiling', 'premiere-night')").bind(params.chapterId).all<{ product_code: string }>()
-        return json({ chapter: { ...chapter, background_url: chapter.background_object_key ? `/api/chapters/${params.chapterId}/background` : null, finishes: finishes.results.map((item) => item.product_code) }, media: media.results.map((item) => ({ ...item, url: `/api/media/${item.id}` })) })
+        const tier = await getUserTier(user.id)
+        const limits = await getUserLimits(user.id, tier)
+        const imageCount = media.results.filter((item) => item.content_type !== 'video/mp4').length
+        const videoCount = media.results.length - imageCount
+        return json({ chapter: { ...chapter, background_url: chapter.background_object_key ? `/api/chapters/${params.chapterId}/background` : null, finishes: finishes.results.map((item) => item.product_code) }, media: media.results.map((item) => ({ ...item, url: `/api/media/${item.id}` })), quota: { tier, images: { used: imageCount, limit: limits.imagesPerChapter }, videos: { used: videoCount, limit: limits.videosPerChapter } } })
       },
       DELETE: async ({ request, params }) => {
         const user = await getCurrentUser(request)

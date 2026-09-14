@@ -1,9 +1,8 @@
-const CACHE_NAME = 'story-loom-shell-v3'
+const CACHE_NAME = 'story-loom-shell-v4'
 const SHELL = ['/', '/manifest.webmanifest', '/story.svg', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)))
-  self.skipWaiting()
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()))
 })
 
 self.addEventListener('activate', (event) => {
@@ -23,7 +22,13 @@ self.addEventListener('fetch', (event) => {
   }
   if (!/\.(?:js|css|png|svg|woff2?|webmanifest)$/.test(url.pathname)) return
   event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-    if (response.ok) event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone())))
+    // Clone synchronously, before the browser can consume the returned response body.
+    // This intentionally caches only static public assets, never pages or private media.
+    if (response.ok && response.type === 'basic') {
+      let cacheCopy
+      try { cacheCopy = response.clone() } catch { return response }
+      event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, cacheCopy)).catch(() => undefined))
+    }
     return response
   })))
 })

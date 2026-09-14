@@ -6,7 +6,7 @@ import { getUserLimits, getUserTier } from '../../lib/server/limits'
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024
 const MAX_VIDEO_SECONDS = 30
-const ALLOWED_TYPES = new Set(['image/png', 'image/webp', 'image/gif', 'video/mp4'])
+const ALLOWED_TYPES = new Set(['image/png', 'image/gif', 'video/mp4'])
 
 export const Route = createFileRoute('/api/media')({
   server: {
@@ -20,9 +20,8 @@ export const Route = createFileRoute('/api/media')({
         const form = await request.formData()
         const chapterId = String(form.get('chapterId') ?? '')
         const file = form.get('file')
-        const cleanRequested = String(form.get('cleanMetadata') ?? 'true') !== 'false'
         if (!(file instanceof File) || !ALLOWED_TYPES.has(file.type)) {
-          return json({ error: 'Use a PNG, WebP, GIF, or MP4 file.' }, { status: 400 })
+          return json({ error: 'Use a PNG, GIF, or MP4 file.' }, { status: 400 })
         }
         const limit = file.type === 'video/mp4' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES
         if (file.size === 0 || file.size > limit) {
@@ -49,8 +48,9 @@ export const Route = createFileRoute('/api/media')({
           if (durationSeconds === null || durationSeconds <= 0 || durationSeconds > MAX_VIDEO_SECONDS) {
             return json({ error: 'MP4 clips must be between 1 and 30 seconds.' }, { status: 400 })
           }
-        } else if (cleanRequested) {
-          if (!isLikelyImage(originalBytes, file.type)) return json({ error: 'The image bytes do not match PNG, WebP, or GIF.' }, { status: 400 })
+        } else {
+          // PNG and GIF are always rewritten before storage. There is no client opt-out.
+          if (!isLikelyImage(originalBytes, file.type)) return json({ error: 'The image bytes do not match PNG or GIF.' }, { status: 400 })
           const image = inspectImage(originalBytes, file.type)
           if (!image) return json({ error: 'That image structure is invalid.' }, { status: 400 })
           if (image.width > 8192 || image.height > 8192 || image.width * image.height > 40_000_000) return json({ error: 'Images may be up to 8192px per side and 40 megapixels.' }, { status: 400 })
@@ -58,11 +58,6 @@ export const Route = createFileRoute('/api/media')({
           const cleaned = cleanseImageMetadata(originalBytes, file.type)
           storedBytes = cleaned.bytes
           metadataCleaned = cleaned.cleaned ? 1 : 0
-        } else {
-          const image = inspectImage(originalBytes, file.type)
-          if (!image) return json({ error: 'The image bytes do not match a valid PNG, WebP, or GIF.' }, { status: 400 })
-          if (image.width > 8192 || image.height > 8192 || image.width * image.height > 40_000_000) return json({ error: 'Images may be up to 8192px per side and 40 megapixels.' }, { status: 400 })
-          if (image.frames > 60 || image.durationSeconds > 8) return json({ error: 'Animated images may contain up to 60 frames and 8 seconds.' }, { status: 400 })
         }
 
         const id = crypto.randomUUID()

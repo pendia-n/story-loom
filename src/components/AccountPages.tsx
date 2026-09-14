@@ -8,7 +8,7 @@ type User = { id: string; username: string }
 type SecurityStatus = { totpEnabled: boolean; questionsEnabled: boolean; questions: string[] }
 
 const tiers = [
-  { code: 'free', name: 'Keepsake', price: '$0', cadence: 'forever', features: ['1 chapter', '12 images + 1 short video / chapter', '3 Quiet Editor moments / month', 'Room wall, Orbit, and Walk · 3 room lights'] },
+  { code: 'free', name: 'Keepsake', price: '$0', cadence: 'forever', features: ['1 chapter', '12 images + 1 short video / chapter', '3 Quiet Editor moments / month', 'Walk gallery · 3 room lights'] },
   { code: 'memory', name: 'Memory', price: '$5', cadence: 'per month · $48/year', features: ['12 chapters', '60 images + 3 short videos / chapter', '30 Quiet Editor moments / month', 'All five gradient room lights'] },
   { code: 'studio', name: 'Studio', price: '$12', cadence: 'per month · $108/year', features: ['50 chapters', '120 images + 8 short videos / chapter', '150 Quiet Editor moments / month', 'All five lights + replaceable custom background'] },
 ]
@@ -201,7 +201,7 @@ export function FaqPage() {
     ['Which editor jobs inspect images?', 'Six of nine jobs can inspect only the images you explicitly select: mood, ordering, cover choice, narration, alt text, and future postcard. Title, caption, and memory thread remain text-only.'],
     ['What is the upload limit?', 'Images may be PNG, WebP, or GIF up to 5 MB. MP4 is allowed up to 25 MB and 30 seconds. SVG, JPEG/JPG, and AVIF are rejected.'],
     ['What does metadata cleansing do?', 'For images, supported metadata chunks are removed before R2 storage. MP4 is validated for size and duration but not rewritten.'],
-    ['How do Room and Walk differ?', 'Room is a composed wall from a fixed editorial viewpoint. Walk places work along a corridor and gives first-person keyboard and drag movement. Orbit is a weightless constellation.'],
+    ['How does the Walk gallery work?', 'Walk places works along a quiet corridor in the order you saved them. Use the keyboard or arrows to move, drag to look around, and use Full screen when you want the room without the surrounding page.'],
     ['Can I recover without email?', 'Yes, only if you remember the username and previously enabled TOTP or two different security answers. Recovery is for signed-out users; signed-in users change passwords in Security.'],
   ]
   return <Page><main className="account-page page-wrap"><div className="eyebrow">FAQ</div><h1>Clear answers, before you entrust a chapter.</h1><div className="faq-list">{items.map(([question, answer]) => <details key={question}><summary>{question}</summary><p>{answer}</p></details>)}</div></main></Page>

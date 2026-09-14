@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AppHeader from './AppHeader'
 import { SECURITY_QUESTIONS } from '../lib/security-questions'
 
-type ViewMode = 'room' | 'float' | 'walk'
+type ViewMode = 'walk'
 type BackgroundMode = 'morning' | 'night' | 'twilight' | 'afternoon' | 'sunrise'
 
 let THREE: typeof Three
@@ -38,6 +38,7 @@ type Chapter = {
 }
 
 type User = { id: string; username: string }
+type ChapterQuota = { images: { used: number; limit: number }; videos: { used: number; limit: number } }
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
 
 const demoPhotos: Photo[] = [
@@ -128,6 +129,30 @@ function artworkTexture(photo: Photo, index: number) {
   return texture
 }
 
+function captionTexture(photo: Photo) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1024; canvas.height = 150
+  const context = canvas.getContext('2d')
+  if (!context) return new THREE.Texture()
+  context.clearRect(0, 0, canvas.width, canvas.height)
+  context.fillStyle = 'rgba(17, 22, 20, .9)'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.fillStyle = '#f3efe4'
+  context.font = '600 34px Georgia, serif'
+  context.fillText(photo.title.slice(0, 64), 32, 52)
+  context.fillStyle = 'rgba(243,239,228,.78)'
+  context.font = '28px Inter, system-ui, sans-serif'
+  const words = (photo.caption || 'A moment from this chapter.').slice(0, 112).split(/\s+/)
+  let line = ''; let y = 101
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word
+    if (context.measureText(candidate).width > 950 && line) { context.fillText(line, 32, y); line = word; y += 34; if (y > 136) break } else line = candidate
+  }
+  if (line && y <= 136) context.fillText(line, 32, y)
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
 type GalleryCanvasProps = {
   photos: Photo[]
   mode: ViewMode
@@ -177,7 +202,7 @@ function GalleryCanvas(props: GalleryCanvasProps) {
     {failed ? <div className="gallery-fallback" aria-label="Accessible two-dimensional gallery">{props.photos.map((photo, index) => <button key={photo.id} className={props.selectedId === photo.id ? 'is-active' : ''} onClick={() => props.onSelect(photo.id)}>{photo.url && photo.contentType !== 'video/mp4' ? <img src={photo.url} alt="" /> : <span className="fallback-art">{String(index + 1).padStart(2, '0')}</span>}<strong>{photo.title}</strong></button>)}</div> : ready ? <GalleryCanvasReady {...props} onFailure={handleFailure} /> : <div className="gallery-loading"><span>✦</span><p>Preparing the room…</p></div>}
     {ready && !failed && props.mode === 'walk' && <div className="walk-controls" aria-label="Walk controls">
       <div className="walk-pad"><button aria-label="Move forward" onPointerDown={() => command('forward')}>↑</button><button aria-label="Move left" onPointerDown={() => command('left')}>←</button><button aria-label="Move backward" onPointerDown={() => command('back')}>↓</button><button aria-label="Move right" onPointerDown={() => command('right')}>→</button></div>
-      <div className="walk-actions"><button onClick={() => command('entrance')}>Entrance</button><button onClick={() => command('next')}>Next memory</button><button className={autoWalk ? 'is-active' : ''} onClick={() => { const next = !autoWalk; setAutoWalk(next); command(next ? 'auto-on' : 'auto-off') }}>{autoWalk ? 'Pause' : 'Auto walk'}</button></div>
+      <div className="walk-actions"><button onClick={() => command('entrance')}>Entrance</button><button onClick={() => command('next')}>Next memory</button><button className={autoWalk ? 'is-active' : ''} onClick={() => { const next = !autoWalk; setAutoWalk(next); command(next ? 'auto-on' : 'auto-off') }}>{autoWalk ? 'Pause' : 'Auto walk'}</button><button onClick={() => gateRef.current?.requestFullscreen?.()}>Full screen</button></div>
     </div>}
   </div>
 }
@@ -204,10 +229,9 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
       onFailure()
       return
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.6))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.outputColorSpace = THREE.SRGBColorSpace
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.08
+    renderer.toneMapping = THREE.NoToneMapping
     mount.appendChild(renderer.domElement)
 
     const textureLoader = new THREE.TextureLoader()
@@ -330,32 +354,28 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
       const height = 1.8
       const plane = new THREE.Mesh(
         new THREE.PlaneGeometry(width, height),
-        new THREE.MeshStandardMaterial({ map: texture, roughness: 0.64, metalness: 0.02 }),
+        new THREE.MeshBasicMaterial({ map: texture }),
       )
       const trim = new THREE.Mesh(
         new THREE.BoxGeometry(width + 0.18, height + 0.18, 0.14),
         new THREE.MeshStandardMaterial({ color: '#b77c49', roughness: 0.54, metalness: 0.1 }),
       )
       trim.position.z = -0.09
-      frame.add(trim, plane)
+      const labelTexture = captionTexture(photo)
+      ownedTextures.add(labelTexture)
+      const label = new THREE.Mesh(
+        new THREE.PlaneGeometry(width, .34),
+        new THREE.MeshBasicMaterial({ map: labelTexture, transparent: true }),
+      )
+      label.position.set(0, -height / 2 - .27, .012)
+      frame.add(trim, plane, label)
       frame.userData.itemId = photo.id
       interactive.push(plane)
       plane.userData.itemId = photo.id
       const side = index % 2 === 0 ? 1 : -1
       const lane = Math.floor(index / 2)
-      if (mode === 'float') {
-        const angle = (index / Math.max(photos.length, 1)) * Math.PI * 2
-        frame.position.set(Math.cos(angle) * 4.2, 2.8 + Math.sin(angle * 1.7) * 1.25, Math.sin(angle) * 3.4)
-        frame.rotation.y = -angle + Math.PI / 2
-      } else if (mode === 'walk') {
-        frame.position.set(side * 3.75, 2.65, 5.5 - lane * 3.45)
-        frame.rotation.y = side === 1 ? -Math.PI / 2 : Math.PI / 2
-      } else {
-        const columns = Math.min(3, Math.max(1, photos.length))
-        const column = index % columns
-        const row = Math.floor(index / columns)
-        frame.position.set((column - (columns - 1) / 2) * 3.15, 3.85 - row * 2.25, -7.72)
-      }
+      frame.position.set(side * 3.83, 2.65, 5.2 - lane * 3.65)
+      frame.rotation.y = side === 1 ? -Math.PI / 2 : Math.PI / 2
       if (photo.url && photo.contentType === 'video/mp4') {
         const video = document.createElement('video')
         video.src = photo.url
@@ -368,14 +388,14 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
         ownedTextures.add(videoTexture)
         videos.push(video)
         videoById.set(photo.id, video)
-        ;(plane.material as Three.MeshStandardMaterial).map = videoTexture
+        ;(plane.material as Three.MeshBasicMaterial).map = videoTexture
         ;(plane.material as Three.MeshStandardMaterial).needsUpdate = true
         texture.dispose()
       } else if (photo.url) {
         textureLoader.load(photo.url, (loaded) => {
           loaded.colorSpace = THREE.SRGBColorSpace
           ownedTextures.add(loaded)
-          ;(plane.material as Three.MeshStandardMaterial).map = loaded
+          ;(plane.material as Three.MeshBasicMaterial).map = loaded
           ;(plane.material as Three.MeshStandardMaterial).needsUpdate = true
           texture.dispose()
         })
@@ -391,7 +411,7 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
     const onPointerDown = (event: PointerEvent) => { drag.active = true; drag.x = event.clientX }
     const onPointerUp = () => { drag.active = false }
     const onPointerMove = (event: PointerEvent) => {
-      if (drag.active && mode === 'walk') {
+      if (drag.active) {
         drag.yaw += (event.clientX - drag.x) * 0.004
         drag.x = event.clientX
       }
@@ -461,8 +481,7 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
         positions.needsUpdate = true
       }
       if (stars) (stars.material as Three.PointsMaterial).opacity = 0.62 + Math.sin(elapsed * 1.7) * 0.18
-      if (mode === 'float') galleryGroup.rotation.y = elapsed * 0.075
-      if (mode === 'walk') {
+      {
         const speed = 0.055
         const direction = new THREE.Vector3()
         const forward = new THREE.Vector3(-Math.sin(drag.yaw), 0, -Math.cos(drag.yaw))
@@ -474,17 +493,7 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
         camera.position.x = THREE.MathUtils.clamp(camera.position.x + direction.x, -3.6, 3.6)
         camera.position.z = THREE.MathUtils.clamp(camera.position.z + direction.z, -5.4, 7.4)
         camera.rotation.y = THREE.MathUtils.lerp(camera.rotation.y, drag.yaw, 0.08)
-      } else {
-        camera.position.x = THREE.MathUtils.lerp(camera.position.x, 0, 0.025)
-        camera.position.z = THREE.MathUtils.lerp(camera.position.z, mode === 'room' ? 3.8 : 8.7, 0.035)
-        camera.lookAt(0, 2.5, mode === 'room' ? -7.2 : 0)
       }
-      interactive.forEach((object) => {
-        const isSelected = object.userData.itemId === selectionRef.current
-        const material = (object as Three.Mesh).material as Three.MeshStandardMaterial
-        material.emissive.set(isSelected ? '#d8b17e' : '#000000')
-        material.emissiveIntensity = isSelected ? 0.32 : 0
-      })
       renderer.render(scene, camera)
       frameId = requestAnimationFrame(animate)
     }
@@ -501,6 +510,7 @@ function GalleryCanvasReady({ photos, mode, backgroundMode, backgroundUrl, finis
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('click', onClick)
       renderer.dispose()
+      renderer.forceContextLoss()
       mount.removeChild(renderer.domElement)
       videos.forEach((video) => { video.pause(); video.removeAttribute('src'); video.load() })
       ownedTextures.forEach((texture) => texture.dispose())
@@ -629,9 +639,9 @@ function csrfHeaders() {
 }
 
 export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: string }) {
-  const [mode, setMode] = useState<ViewMode>('room')
+  const [mode] = useState<ViewMode>('walk')
   const [photos, setPhotos] = useState<Photo[]>(demoPhotos)
-  const [selectedId, setSelectedId] = useState<string | null>(demoPhotos[0]?.id ?? null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [activeChapter, setActiveChapter] = useState<Chapter | null>(null)
@@ -642,8 +652,7 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   const [loading, setLoading] = useState(false)
   const [chapterTitle, setChapterTitle] = useState('')
   const [chapterSubtitle, setChapterSubtitle] = useState('')
-  const [cleanMetadata, setCleanMetadata] = useState(true)
-  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(demoPhotos[0] ?? null)
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null)
   const [tier, setTier] = useState<'free' | 'memory' | 'studio'>('free')
   const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('night')
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null)
@@ -660,11 +669,12 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   const [editorResult, setEditorResult] = useState('')
   const [editorRequestId, setEditorRequestId] = useState(() => crypto.randomUUID())
   const [captionDraft, setCaptionDraft] = useState(selectedPhoto?.caption ?? '')
+  const [chapterQuota, setChapterQuota] = useState<ChapterQuota>({ images: { used: 0, limit: 12 }, videos: { used: 0, limit: 1 } })
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null)
   const [showInstallHelp, setShowInstallHelp] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
   const backgroundRef = useRef<HTMLInputElement>(null)
-  const activeModeLabel = useMemo(() => ({ room: 'Curated wall', float: 'Slow orbit', walk: 'First-person walk' }[mode]), [mode])
+  const activeModeLabel = 'First-person walk'
   const allowedBackgroundModes = useMemo<BackgroundMode[]>(() => tier === 'free' ? ['morning', 'night', 'afternoon'] : ['morning', 'night', 'twilight', 'afternoon', 'sunrise'], [tier])
   const editorNeedsImages = quietEditorActions.find(([code]) => code === editorKind)?.[2] ?? false
 
@@ -688,7 +698,7 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     if (!user || !initialChapterId) return
     void fetch(`/api/chapters/${initialChapterId}`).then(async (response) => {
       if (!response.ok) return
-      const result = await response.json() as { chapter?: Chapter; media?: Array<{ id: string; filename: string; caption?: string | null; url: string; content_type?: string; duration_seconds?: number | null }> }
+      const result = await response.json() as { chapter?: Chapter; quota?: ChapterQuota; media?: Array<{ id: string; filename: string; caption?: string | null; url: string; content_type?: string; duration_seconds?: number | null }> }
       if (!result.chapter) return
       const loaded = (result.media ?? []).map((item) => ({ id: item.id, title: item.filename, caption: item.caption || (item.content_type === 'video/mp4' ? 'A moving moment from this chapter.' : 'A moment from this chapter.'), url: item.url, contentType: item.content_type, durationSeconds: item.duration_seconds }))
       setActiveChapter(result.chapter)
@@ -696,8 +706,9 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
       setBackgroundUrl(result.chapter.background_url ?? null)
       setFinishes(result.chapter.finishes ?? [])
       setPhotos(loaded.length ? loaded : [{ id: 'empty', title: 'A room waiting for a moment', caption: 'Add a photo to begin.' }])
-      setSelectedId(loaded[0]?.id ?? 'empty')
-      setSelectedPhoto(loaded[0] ?? null)
+      setChapterQuota(result.quota ?? { images: { used: loaded.filter((item) => item.contentType !== 'video/mp4').length, limit: 12 }, videos: { used: loaded.filter((item) => item.contentType === 'video/mp4').length, limit: 1 } })
+      setSelectedId(null)
+      setSelectedPhoto(null)
     }).catch(() => setNotice('That room could not be opened.'))
   }, [initialChapterId, user])
 
@@ -719,11 +730,11 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   async function openChapter(chapter: Chapter) {
     setLoading(true); setNotice('')
     const response = await fetch(`/api/chapters/${chapter.id}`)
-    const result = await response.json() as { chapter?: Chapter; media?: Array<{ id: string; filename: string; caption?: string | null; url: string; content_type?: string; duration_seconds?: number | null }> }
+    const result = await response.json() as { chapter?: Chapter; quota?: ChapterQuota; media?: Array<{ id: string; filename: string; caption?: string | null; url: string; content_type?: string; duration_seconds?: number | null }> }
     setLoading(false)
     if (!response.ok || !result.chapter) { setNotice('That room could not be opened.'); return }
     const loaded = (result.media ?? []).map((item) => ({ id: item.id, title: item.filename, caption: item.caption || (item.content_type === 'video/mp4' ? 'A moving moment from this chapter.' : 'A moment from this chapter.'), url: item.url, contentType: item.content_type, durationSeconds: item.duration_seconds }))
-    setActiveChapter(result.chapter); setBackgroundMode(result.chapter.background_mode ?? 'night'); setBackgroundUrl(result.chapter.background_url ?? null); setFinishes(result.chapter.finishes ?? []); setPhotos(loaded.length ? loaded : [{ id: 'empty', title: 'A room waiting for a moment', caption: 'Add a photo to begin.' }]); setSelectedId(loaded[0]?.id ?? 'empty'); setSelectedPhoto(loaded[0] ?? null)
+    setActiveChapter(result.chapter); setBackgroundMode(result.chapter.background_mode ?? 'night'); setBackgroundUrl(result.chapter.background_url ?? null); setFinishes(result.chapter.finishes ?? []); setPhotos(loaded.length ? loaded : [{ id: 'empty', title: 'A room waiting for a moment', caption: 'Add a photo to begin.' }]); setChapterQuota(result.quota ?? { images: { used: loaded.filter((item) => item.contentType !== 'video/mp4').length, limit: 12 }, videos: { used: loaded.filter((item) => item.contentType === 'video/mp4').length, limit: 1 } }); setSelectedId(null); setSelectedPhoto(null)
   }
 
   async function createChapter(event: React.FormEvent) {
@@ -738,9 +749,19 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
   function stageFiles(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? [])
     if (!activeChapter || files.length === 0) return
-    const allowed = new Set(['image/png', 'image/webp', 'image/gif', 'video/mp4'])
-    const accepted = files.slice(0, 120).filter((file) => allowed.has(file.type) && file.size <= (file.type === 'video/mp4' ? 25 : 5) * 1024 * 1024)
-    if (accepted.length !== files.length) setNotice('Some files were skipped. Use PNG, WebP, GIF (5 MB) or MP4 (25 MB, 30 seconds).')
+    const allowed = new Set(['image/png', 'image/gif', 'video/mp4'])
+    const valid = files.slice(0, 120).filter((file) => allowed.has(file.type) && file.size <= (file.type === 'video/mp4' ? 25 : 5) * 1024 * 1024)
+    const queuedImages = valid.filter((file) => file.type !== 'video/mp4')
+    const queuedVideos = valid.filter((file) => file.type === 'video/mp4')
+    const imageRoom = Math.max(0, chapterQuota.images.limit - chapterQuota.images.used)
+    const videoRoom = Math.max(0, chapterQuota.videos.limit - chapterQuota.videos.used)
+    const accepted = [...queuedImages.slice(0, imageRoom), ...queuedVideos.slice(0, videoRoom)]
+    const messages: string[] = []
+    if (valid.length !== files.length) messages.push('Use PNG or GIF images up to 5 MB, or MP4 clips up to 25 MB and 30 seconds.')
+    if (queuedImages.length > imageRoom) messages.push(`This chapter has room for ${imageRoom} more image${imageRoom === 1 ? '' : 's'} on your current plan.`)
+    if (queuedVideos.length > videoRoom) messages.push(`This chapter has room for ${videoRoom} more short video${videoRoom === 1 ? '' : 's'} on your current plan.`)
+    if (messages.length) setNotice(messages.join(' '))
+    if (!accepted.length) { event.target.value = ''; return }
     setPendingUploads(accepted.map((file) => ({ id: crypto.randomUUID(), file, previewUrl: URL.createObjectURL(file) })))
     setUploadProgress(0)
     event.target.value = ''
@@ -765,7 +786,7 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     let uploadedCount = 0
     for (let index = 0; index < pendingUploads.length; index += 1) {
       const file = pendingUploads[index].file
-      const form = new FormData(); form.set('chapterId', activeChapter.id); form.set('file', file); form.set('cleanMetadata', String(cleanMetadata))
+      const form = new FormData(); form.set('chapterId', activeChapter.id); form.set('file', file)
       const response = await fetch('/api/media', { method: 'POST', headers: csrfHeaders(), body: form })
       if (!response.ok) {
         const result = await response.json() as { error?: string }
@@ -784,7 +805,7 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     setPhotos(next); setSelectedPhoto(next.find((photo) => photo.id === selectedId) ?? next[0] ?? null)
     const response = await fetch(`/api/chapters/${activeChapter.id}/media/order`, { method: 'PATCH', headers: { 'content-type': 'application/json', ...csrfHeaders() }, body: JSON.stringify({ mediaIds: next.map((photo) => photo.id) }) })
     if (!response.ok) { setPhotos(previous); setSelectedPhoto(previous.find((photo) => photo.id === selectedId) ?? previous[0] ?? null); const result = await response.json() as { error?: string }; setNotice(result.error ?? 'That order could not be saved.') }
-    else setNotice('Memory order saved across Room, Orbit and Walk.')
+    else setNotice('Memory order saved in the Walk gallery.')
   }
 
   function movePhoto(fromId: string, toId: string) {
@@ -889,9 +910,12 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
     setBackgroundUrl(null); setBackgroundMode('night')
   }
 
-  async function signOut() { await fetch('/api/auth/logout', { method: 'POST', headers: csrfHeaders() }); setUser(null); setTier('free'); setChapters([]); setActiveChapter(null); setBackgroundMode('night'); setBackgroundUrl(null); setFinishes([]); setPhotos(demoPhotos); setSelectedId(demoPhotos[0]?.id ?? null); setNotice('Back to the little demo room.') }
+  async function signOut() { await fetch('/api/auth/logout', { method: 'POST', headers: csrfHeaders() }); setUser(null); setTier('free'); setChapters([]); setActiveChapter(null); setBackgroundMode('night'); setBackgroundUrl(null); setFinishes([]); setPhotos(demoPhotos); setSelectedId(null); setSelectedPhoto(null); setNotice('Back to the little demo room.') }
 
-  const selectedPhotoChanged = useCallback((id: string) => { setSelectedId(id); setSelectedPhoto(photos.find((photo) => photo.id === id) ?? null) }, [photos])
+  const selectedPhotoChanged = useCallback((id: string) => {
+    setSelectedId((current) => current === id ? null : id)
+    setSelectedPhoto((current) => current?.id === id ? null : photos.find((photo) => photo.id === id) ?? null)
+  }, [photos])
 
   return <div className="loom-app">
     {showAuth && <AuthModal onClose={() => setShowAuth(false)} onAuthed={(nextUser) => { setUser(nextUser); void Promise.all([loadChapters(), loadTier()]) }} />}
@@ -900,7 +924,7 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
       <form onSubmit={createChapter} className="stack-form"><label>Chapter title<input value={chapterTitle} onChange={(event) => setChapterTitle(event.target.value)} placeholder="A weekend by the sea" required /></label><label>Small note<input value={chapterSubtitle} onChange={(event) => setChapterSubtitle(event.target.value)} placeholder="The kind of day I want to keep" /></label><button className="button button-primary" disabled={loading}>{loading ? 'Making room…' : 'Create chapter'}</button></form>
     </Modal>}
     {pendingUploads.length > 0 && <Modal onClose={() => { if (!loading) closeUploadPreview() }}>
-      <div className="modal-eyebrow">Arrange before upload</div><h2>Set the chapter rhythm.</h2><p className="modal-copy">Drag the memories into order. This same order appears in Room, Orbit and Walk. {cleanMetadata ? 'Image metadata will be cleaned.' : 'Image metadata cleaning is off.'}</p>
+      <div className="modal-eyebrow">Arrange before upload</div><h2>Set the chapter rhythm.</h2><p className="modal-copy">Drag the memories into order. This same order appears in the Walk gallery. PNG and GIF metadata is removed before storage; MP4 clips are not altered.</p>
       <div className="upload-preview-list">{pendingUploads.map((item, index) => <div key={item.id} className="upload-preview-item" draggable={!loading} onDragStart={() => setDraggedPendingId(item.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedPendingId) movePending(draggedPendingId, item.id); setDraggedPendingId(null) }}>
         {item.file.type === 'video/mp4' ? <video src={item.previewUrl} muted /> : <img src={item.previewUrl} alt="" />}<span><small>{String(index + 1).padStart(2, '0')}</small><strong>{item.file.name}</strong><em>{(item.file.size / 1024 / 1024).toFixed(1)} MB</em></span><div><button type="button" aria-label={`Move ${item.file.name} earlier`} disabled={loading || index === 0} onClick={() => movePending(item.id, pendingUploads[index - 1].id)}>←</button><button type="button" aria-label={`Move ${item.file.name} later`} disabled={loading || index === pendingUploads.length - 1} onClick={() => movePending(item.id, pendingUploads[index + 1].id)}>→</button></div>
       </div>)}</div>
@@ -931,11 +955,11 @@ export default function StoryLoomApp({ initialChapterId }: { initialChapterId?: 
 
       <section id="room" className="room-section page-wrap">
         <div className="room-heading"><div><div className="eyebrow">The room is open</div><h2>{activeChapter?.title ?? 'A little light from the way home'}</h2><p>{activeChapter?.subtitle ?? 'A demo chapter, made for wandering.'}</p></div><div className="room-meta"><span>{photos.length} scenes</span><span className="meta-divider">·</span><span>{activeModeLabel}</span></div></div>
-        <div className="room-stage"><GalleryCanvas photos={photos} mode={mode} backgroundMode={backgroundMode} backgroundUrl={backgroundUrl} finishes={finishes} selectedId={selectedId} onSelect={selectedPhotoChanged} /><div className="stage-glow" /><div className="stage-caption"><span className="caption-line" /> <span>{mode === 'walk' ? 'WASD / arrows to walk · drag to look' : 'Select a frame to linger'}</span></div></div>
-        <div className="room-controls"><div><div className="mode-switch" aria-label="Gallery view mode">{(['room', 'float', 'walk'] as ViewMode[]).map((item) => <button type="button" key={item} className={mode === item ? 'is-active' : ''} onClick={() => setMode(item)}>{item === 'room' ? 'Room wall' : item === 'float' ? 'Orbit' : 'Walk inside'}</button>)}</div><p className="mode-help">{mode === 'room' ? 'See the whole chapter as a composed exhibition wall.' : mode === 'float' ? 'Let memories circle slowly in a weightless constellation.' : 'Move through a corridor with WASD or arrow keys; drag to look around.'}</p></div><div className="room-tools">{activeChapter && <><div className="atmosphere-controls"><label>Room light<select value={backgroundMode} onChange={(event) => void changeBackgroundMode(event.target.value as BackgroundMode)}>{allowedBackgroundModes.map((item) => <option key={item} value={item}>{backgroundLabels[item]}</option>)}</select></label>{tier === 'studio' && <><input ref={backgroundRef} type="file" accept=".png,.webp,.gif,image/png,image/webp,image/gif" hidden onChange={(event) => void uploadBackground(event)} /><button type="button" className="button button-ghost" onClick={() => backgroundRef.current?.click()} disabled={loading}>{backgroundUrl ? 'Replace room image' : 'Use room image'}</button>{backgroundUrl && <button type="button" className="text-button" onClick={() => void clearBackground()} disabled={loading}>Use gradient</button>}</>}</div><label className="clean-toggle"><input type="checkbox" checked={cleanMetadata} onChange={(event) => setCleanMetadata(event.target.checked)} /> Clean image metadata</label><input ref={uploadRef} type="file" accept=".png,.webp,.gif,.mp4,image/png,image/webp,image/gif,video/mp4" multiple hidden onChange={stageFiles} /><button type="button" className="button button-cream" onClick={() => uploadRef.current?.click()} disabled={loading}>{loading ? 'Placing…' : '+ Add memories'}</button><button type="button" className="button button-ghost" onClick={openEditor}>Quiet Editor</button><button type="button" className="button button-ghost" onClick={() => setShowFinishes(true)}>Add atmosphere</button></>}{notice && <span className="notice">{notice}</span>}</div></div>
+        <div className="room-stage"><GalleryCanvas photos={photos} mode={mode} backgroundMode={backgroundMode} backgroundUrl={backgroundUrl} finishes={finishes} selectedId={selectedId} onSelect={selectedPhotoChanged} /><div className="stage-caption"><span className="caption-line" /> <span>WASD / arrows to walk · drag to look · full screen available</span></div></div>
+        <div className="room-controls"><div><p className="mode-help">Walk through your chapter in its saved order. Each work carries its own title and caption directly beneath it.</p></div><div className="room-tools">{activeChapter && <><div className="atmosphere-controls"><label>Room light<select value={backgroundMode} onChange={(event) => void changeBackgroundMode(event.target.value as BackgroundMode)}>{allowedBackgroundModes.map((item) => <option key={item} value={item}>{backgroundLabels[item]}</option>)}</select></label>{tier === 'studio' && <><input ref={backgroundRef} type="file" accept=".png,.gif,image/png,image/gif" hidden onChange={(event) => void uploadBackground(event)} /><button type="button" className="button button-ghost" onClick={() => backgroundRef.current?.click()} disabled={loading}>{backgroundUrl ? 'Replace room image' : 'Use room image'}</button>{backgroundUrl && <button type="button" className="text-button" onClick={() => void clearBackground()} disabled={loading}>Use gradient</button>}</>}</div><span className="metadata-note">PNG and GIF metadata is removed automatically.</span><input ref={uploadRef} type="file" accept=".png,.gif,.mp4,image/png,image/gif,video/mp4" multiple hidden onChange={stageFiles} /><button type="button" className="button button-cream" onClick={() => uploadRef.current?.click()} disabled={loading}>{loading ? 'Placing…' : '+ Add memories'}</button><button type="button" className="button button-ghost" onClick={openEditor}>Quiet Editor</button><button type="button" className="button button-ghost" onClick={() => setShowFinishes(true)}>Add atmosphere</button></>}{notice && <span className="notice">{notice}</span>}</div></div>
       </section>
 
-      <section className="story-section page-wrap"><div className="story-intro"><div className="eyebrow">One room, many ways back</div><h2>A gallery that waits<br />for your next mood.</h2></div><div className="story-grid"><article><span className="story-number">01</span><h3>Collect gently</h3><p>Drop in a few photos. Story Loom makes the room, the rhythm, and the little pause between each scene.</p></article><article><span className="story-number">02</span><h3>Wander slowly</h3><p>Choose a calm orbit or walk the walls. The gallery is made to be visited, not completed.</p></article><article><span className="story-number">03</span><h3>Keep it yours</h3><p>Your chapters live behind your account. There is no public feed asking you to perform your memories.</p></article></div></section>
+      <section className="story-section page-wrap"><div className="story-intro"><div className="eyebrow">One room, many ways back</div><h2>A gallery that waits<br />for your next mood.</h2></div><div className="story-grid"><article><span className="story-number">01</span><h3>Collect gently</h3><p>Drop in a few moments. Story Loom builds a room in their saved order.</p></article><article><span className="story-number">02</span><h3>Wander slowly</h3><p>Walk the walls, follow the captions, and return without a feed asking you to perform.</p></article><article><span className="story-number">03</span><h3>Keep it yours</h3><p>Your chapters live behind your account, with a full-screen visit whenever you need it.</p></article></div></section>
 
       {user && <section className="chapters-section page-wrap"><div className="room-heading"><div><div className="eyebrow">Your rooms</div><h2>Return whenever you like.</h2></div><button className="button button-primary" onClick={() => setShowCreate(true)}>+ New chapter</button></div>{chapters.length === 0 ? <div className="empty-state">Your first chapter is one small upload away.</div> : <div className="chapter-list">{chapters.map((chapter) => <div className={`chapter-list-item ${activeChapter?.id === chapter.id ? 'is-active' : ''}`} key={chapter.id}><Link className="chapter-row" to="/chapters/$chapterId" params={{ chapterId: chapter.id }}><span><strong>{chapter.title}</strong><small>{chapter.subtitle}</small></span><span>Open ↗</span></Link><button type="button" className="chapter-delete" onClick={() => void removeChapter(chapter)} aria-label={`Delete ${chapter.title}`}>Delete</button></div>)}</div>}</section>}
 

@@ -2,11 +2,9 @@
 
 ## What the app is
 
-Story Loom is a private, mood-led 3D memory gallery. A person brings a small set of PNG, WebP, GIF, or short MP4 memories into a chapter, and Story Loom turns that chapter into a room they can revisit in three ways:
+Story Loom is a private, mood-led 3D memory gallery. A person brings a small set of PNG, GIF, or short MP4 memories into a chapter, and Story Loom turns that chapter into one immersive Walk gallery:
 
-- **Room wall** — a composed exhibition wall for seeing the whole chapter.
-- **Orbit** — a slow, weightless arrangement of memories.
-- **Walk inside** — a first-person corridor that can be explored with keyboard, pointer, or touch-friendly controls.
+- **Walk** — a first-person corridor explored with keyboard, pointer, or touch-friendly controls; each work carries its title and caption beneath it.
 
 The product is intentionally a calm place to return to, not a public feed, productivity dashboard, or infinite social timeline. Its emotional promise is: **keep the glow of every chapter**.
 
@@ -119,7 +117,7 @@ Permanent chapter finishes are separate from recurring viewing:
 - Stardust Ceiling — $2.99.
 - Premiere Night — $3.99.
 
-Each finish is attached to a chapter and is intended to work in Room, Orbit, and Walk.
+Each finish is attached to a chapter and works in the Walk gallery.
 
 ## Current implementation status
 
@@ -141,8 +139,8 @@ Implemented in the current Cloudflare Worker application:
 - Studio custom background replacement with deletion of the previous R2 object after the new object is accepted.
 - Studio capacity entitlement calculations from paid D1 purchases.
 - Stripe product routing for subscriptions, permanent finishes, and Studio add-ons.
-- Three.js Room, Orbit, and Walk rendering with atmospheric lighting and the four permanent finishes.
-- Upload-preview ordering and persistent post-upload ordering shared by Room, Orbit, and Walk.
+- Three.js Walk rendering with atmospheric lighting, captions beneath every work, full-screen viewing, and the four permanent finishes.
+- Upload-preview ordering and persistent post-upload ordering used by the Walk gallery.
 - Caption editing and explicit destructive controls for individual memories and whole chapters.
 - Confirmed account deletion that cancels an active Stripe subscription before removing D1 records, sessions, and private R2 objects.
 - Quiet Editor image selection with explicit provider consent, ownership validation, and real image input for visual actions.
