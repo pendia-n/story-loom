@@ -7,9 +7,22 @@
 	"name": "shaloom",
 	"compatibility_date": "2026-09-25",
 	"main": "./workers/app.ts",
-	"vars": {
-		"VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare"
+	"assets": {
+		"run_worker_first": ["/api/*", "/media/*"]
 	},
+	"r2_buckets": [
+		{
+			"binding": "MEDIA",
+			"bucket_name": "s-w"
+		}
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "shaloom-db",
+			"database_id": "a6b8fe44-ab39-4730-9a36-55f011fc2ac5"
+		}
+	],
 	"observability": {
 		"enabled": true
 	},

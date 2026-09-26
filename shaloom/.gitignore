@@ -6,6 +6,7 @@
 # React Router
 /.react-router/
 /build/
+public/gallery-engine.js
 
 # Cloudflare
 .mf

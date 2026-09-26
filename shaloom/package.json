@@ -3,8 +3,10 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "react-router build",
+		"build": "pnpm run build:gallery && react-router build",
+		"build:gallery": "esbuild app/gallery/vendor/index.js --bundle --outfile=public/gallery-engine.js --platform=browser --format=iife --target=es2020",
 		"dev": "react-router dev",
+		"test:catalog": "node --experimental-strip-types --test tests/*.test.ts",
 		"typecheck": "wrangler types && react-router typegen && tsc -b",
 		"deploy": "pnpm run build && wrangler deploy",
 		"preview": "pnpm run build && vite preview",
@@ -12,10 +14,13 @@
 		"postinstall": "wrangler types"
 	},
 	"dependencies": {
+		"gl-mat4": "^1.2.0",
+		"gl-vec3": "^1.2.0",
 		"isbot": "^5.1.36",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
-		"react-router": "^8.4.0"
+		"react-router": "^8.4.0",
+		"regl": "^2.1.1"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.60.2",
