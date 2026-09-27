@@ -9,6 +9,10 @@ Implementation checklist for the requested gallery refinements and mobile fit.
 - [x] Add bounded artwork size controls, initially one step larger than the previous default.
 - [x] Let a user select a painting on desktop or mobile and show its R2 custom-metadata description when present. Use a clear empty-state when no description exists.
 - [x] Make gallery controls responsive to narrow/short screens and safe areas. Allow button labels to wrap and prevent control labels from escaping their boxes.
-- [ ] Deploy the Worker and verify the production UI and media behavior.
+- [x] Deploy the Worker and verify the production UI at desktop, 390px portrait, 320px narrow-phone, and 844px landscape sizes. The settings panel stays inside the viewport and its button labels do not overflow.
+- [x] Verify the deployed MP4 asset endpoint returns HTTP 200 as `video/mp4` and supports byte ranges (`demo/9k.mp4`).
+- [ ] Complete an end-to-end live check of selecting that MP4 painting, watching its texture move, and using pause/seek. The code path is present, but this browser session did not reach the MP4 painting reliably enough to claim playback was visually verified.
+
+Deployment checked: `https://shaloom.pendia-community.workers.dev`, version `a0484875-2455-493f-b858-797bd48aeb42`.
 
 Scope note: this gallery-only demo has no upload editor or post-upload drag-and-drop sorting flow. Those flows are left untouched.
