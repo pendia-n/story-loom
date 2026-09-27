@@ -60,7 +60,7 @@ const lerp = (x, a, b) => (1 - x) * a + x * b;
 const easeInOutQuad = x =>
 	x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
 
-module.exports = function ({getGridSegments, getGridParts}, fovY) {
+module.exports = function ({getGridSegments, getGridParts}, fovY, pickMedia, onSelect) {
 	var mouse = [0, Math.PI * 3 / 4];
 	var fmouse = [0, Math.PI * 3 / 4];
 	var dir = [0, 0, 0];
@@ -88,12 +88,40 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 	// Mouse input
 	const canvas = document.getElementById('gallery-canvas');
 	const requestMouseLook = () => canvas?.requestPointerLock?.();
+	const selectAt = (clientX, clientY) => {
+		if (!canvas || !pickMedia) return false;
+		const rect = canvas.getBoundingClientRect();
+		const ndc = [
+			2 * (clientX - rect.left) / rect.width - 1,
+			1 - 2 * (clientY - rect.top) / rect.height,
+			-1,
+		];
+		const inverseProjection = mat4.invert([], proj);
+		const inverseView = mat4.invert([], view);
+		vec3.transformMat4(ndc, ndc, inverseProjection);
+		vec3.transformMat4(ndc, ndc, inverseView);
+		const direction = vec3.normalize([], vec3.sub([], ndc, pos));
+		const painting = pickMedia(pos, direction);
+		if (!painting) return false;
+		onSelect?.(painting);
+		return true;
+	};
+	const handleCanvasClick = (event) => {
+		if (event.target !== canvas) return;
+		const locked = document.pointerLockElement === canvas;
+		const rect = canvas.getBoundingClientRect();
+		const selected = selectAt(
+			locked ? rect.left + rect.width / 2 : event.clientX,
+			locked ? rect.top + rect.height / 2 : event.clientY,
+		);
+		if (!locked && !selected) requestMouseLook();
+	};
 	const handleMouseMove = (event) => {
 		if (document.pointerLockElement === canvas) {
 			orientCamera(event.movementX, event.movementY, mouseSensibility);
 		}
 	};
-	canvas?.addEventListener('click', requestMouseLook);
+	canvas?.addEventListener('click', handleCanvasClick);
 	document.addEventListener('mousemove', handleMouseMove);
 
 	// Touch input
@@ -113,6 +141,7 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 				firstTouch.pageY - lastTouch.pageY
 			);
 			if(e.timeStamp - touchTimestamp < durationToClick && d < distToClick) {
+				selectAt(lastTouch.clientX, lastTouch.clientY);
 				// compute touch vector
 				let tmp = [], tmp1 = [], tmp2 = [];
 				let touchDir = [-1 + 2 * lastTouch.pageX / window.innerWidth, 1 - 2 * lastTouch.pageY / window.innerHeight, 0];
@@ -223,7 +252,7 @@ module.exports = function ({getGridSegments, getGridParts}, fovY) {
 		pos, fmouse, forward, up,
 		view: () => view,
 		destroy: () => {
-			canvas?.removeEventListener('click', requestMouseLook);
+			canvas?.removeEventListener('click', handleCanvasClick);
 			document.removeEventListener('mousemove', handleMouseMove);
 			window.removeEventListener('touchstart', handleTouch);
 			window.removeEventListener('touchmove', handleTouch);

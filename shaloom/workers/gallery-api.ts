@@ -18,15 +18,15 @@ function titleFromKey(key: string): string {
 	return filename.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || "Memory";
 }
 
-async function listAllDemoMedia(bucket: R2Bucket): Promise<string[]> {
-	const keys: string[] = [];
+async function listAllDemoMedia(bucket: R2Bucket): Promise<R2Object[]> {
+	const objects: R2Object[] = [];
 	let cursor: string | undefined;
 	do {
 		const page = await bucket.list({ prefix: "demo/", limit: 1000, cursor });
-		keys.push(...page.objects.map((object) => object.key).filter(isGalleryMediaKey));
+		objects.push(...page.objects.filter((object) => isGalleryMediaKey(object.key)));
 		cursor = page.truncated ? page.cursor : undefined;
 	} while (cursor);
-	return keys;
+	return objects;
 }
 
 export async function galleryMediaResponse(request: Request, bucket: R2Bucket): Promise<Response> {
@@ -39,16 +39,25 @@ export async function galleryMediaResponse(request: Request, bucket: R2Bucket): 
 	const count = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get("count") ?? "20", 10) || 20));
 	const requestedSeed = url.searchParams.get("shuffle");
 	const seed = requestedSeed && requestedSeed.length <= 80 ? requestedSeed : undefined;
-	const keys = orderGalleryMedia(await listAllDemoMedia(bucket), seed);
+	const objects = await listAllDemoMedia(bucket);
+	const objectByKey = new Map(objects.map((object) => [object.key, object]));
+	const uploadedKeys = objects
+		.slice()
+		.sort((left, right) => left.uploaded.getTime() - right.uploaded.getTime()
+			|| left.key.localeCompare(right.key, "en", { numeric: true, sensitivity: "base" }))
+		.map((object) => object.key);
+	const keys = seed ? orderGalleryMedia(uploadedKeys, seed) : uploadedKeys;
 	const items = keys.slice(from, from + count).map((key, index) => {
 		const isVideo = key.toLowerCase().endsWith(".mp4");
 		const filename = key.split("/").pop() ?? key;
 		const posterKey = isVideo ? `demo/posters/${filename.replace(/\.mp4$/i, ".jpg")}` : key;
+		const description = objectByKey.get(key)?.customMetadata?.description?.trim().slice(0, 2000) ?? "";
 		return {
 			image_id: from + index,
 			key,
 			file: filename,
 			title: titleFromKey(filename),
+			description,
 			isVideo,
 			url: `/media/${encodeURIComponent(key)}`,
 			posterUrl: `/media/${encodeURIComponent(posterKey)}`,

@@ -48,7 +48,26 @@ const mesh = require('./mesh');
 drawMap = mesh(regl, map, useReflexion);
 placement = require('./placement')(regl, map);
 drawPainting = require('./painting')(regl);
-fps = require('./fps')(map, fovY);
+const selectPainting = (painting) => {
+	window.dispatchEvent(new CustomEvent('shaloom:painting-selected', {
+		detail: {
+			key: painting.key,
+			title: painting.title,
+			description: painting.description || '',
+			isVideo: Boolean(painting.isVideo),
+			url: painting.url,
+			posterUrl: painting.posterUrl,
+		},
+	}));
+	if (painting.isVideo) {
+		placement.playMedia(painting.key).catch(() => {
+			window.dispatchEvent(new Event('shaloom:video-error'));
+		});
+	} else {
+		placement.clearMedia();
+	}
+};
+fps = require('./fps')(map, fovY, placement.pickRay, selectPainting);
 
 const context = regl({
 	cull: {
@@ -96,9 +115,26 @@ const frameLoop = regl.frame(({
 });
 
 window.ShaloomGallery = {
+	playMedia(key) {
+		return placement.playMedia(key);
+	},
+	pauseMedia() {
+		placement.pauseMedia();
+	},
+	seekMedia(time) {
+		placement.seekMedia(time);
+	},
+	playbackState() {
+		return placement.playbackState();
+	},
+	clearSelection() {
+		placement.clearMedia();
+		window.dispatchEvent(new Event('shaloom:painting-cleared'));
+	},
 	destroy() {
 		frameLoop.cancel();
 		fps.destroy?.();
+		placement.destroy?.();
 		regl.destroy();
 		window.removeEventListener('resize', resizeGalleryCanvas);
 	},

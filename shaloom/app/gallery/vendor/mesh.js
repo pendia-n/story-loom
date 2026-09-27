@@ -19,8 +19,10 @@ module.exports = (regl, data, useReflexion) => {
         frag: `
         precision lowp float;
         varying vec3 v_pos, v_relativepos, v_normal;
-        uniform sampler2D wallTexture;
-        uniform sampler2D floorTexture;
+		uniform sampler2D wallTexture;
+		uniform sampler2D floorTexture;
+		uniform float lightGain, partyMix;
+		uniform vec3 lightTint;
 
         vec3 hue2rgb(float h) {
             vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
@@ -39,7 +41,11 @@ module.exports = (regl, data, useReflexion) => {
             } else {
                 totalLight *= vec3(0.86, 0.97, 0.80);
             }
-            totalLight *= (0.5 + 0.5*hue2rgb(0.5 + (v_pos.x + v_pos.z) / 160.0)); //color variation
+			totalLight *= (0.5 + 0.5*hue2rgb(0.5 + (v_pos.x + v_pos.z) / 160.0)); //color variation
+			float partyWash = 0.5 + 0.5 * sin(v_pos.x * 0.72 + v_pos.z * 0.91);
+			vec3 partyColor = mix(vec3(1.16, 0.68, 0.78), vec3(0.70, 0.82, 1.20), partyWash);
+			totalLight *= lightTint * lightGain;
+			totalLight = mix(totalLight, totalLight * partyColor, partyMix);
             float alpha = .98+smoothstep(150.,0.,dist)-v_normal.y; // reflexion
             gl_FragColor = vec4(totalLight, ${useReflexion ? "alpha" : "1.0"});
         }`,
@@ -72,10 +78,19 @@ module.exports = (regl, data, useReflexion) => {
             },
         } : {},
 
-        uniforms: {
-            wallTexture,
-            floorTexture
-        },
+		uniforms: {
+			wallTexture,
+			floorTexture,
+			lightGain: () => ({ dim: 0.86, lighter: 1.08, daylight: 1.28, twilight: 0.96, party: 1.05 }[window.SHALOOM_LIGHTING] ?? 0.86),
+			lightTint: () => ({
+				dim: [0.95, 0.91, 0.83],
+				lighter: [1.0, 0.98, 0.91],
+				daylight: [1.0, 1.0, 0.98],
+				twilight: [0.78, 0.82, 1.05],
+				party: [1.08, 0.91, 0.94],
+			}[window.SHALOOM_LIGHTING] ?? [0.95, 0.91, 0.83]),
+			partyMix: () => window.SHALOOM_LIGHTING === 'party' ? 0.32 : 0.0,
+		},
 
         elements: new Uint32Array(data.elements)
     });

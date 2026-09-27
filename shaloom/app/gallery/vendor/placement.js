@@ -1,6 +1,7 @@
 'use strict';
 const texture = require('./image');
 const mat4 = require('gl-mat4');
+const vec3 = require('gl-vec3');
 
 const renderDist = 20;
 const loadDist = 20;
@@ -75,7 +76,7 @@ module.exports = (regl, {placements, getAreaIndex}) => {
         mat4.fromTranslation(textmodel, [pos[0], 1.7 - globalScale, pos[2]]);
         mat4.scale(textmodel, textmodel, [2,2,2]);
         mat4.rotateY(textmodel, textmodel, -angle);
-        batch.push({ ...p, vseg, angle, model, textmodel, text, width, textGen:null });
+        batch.push({ ...p, placementIndex: batch.length, vseg, angle, model, textmodel, text, width, textGen:null });
     };
     // Fetch the first textures
     texture.fetch(regl, 20, dynamicRes, loadPainting, onInitialFramesLoaded);
@@ -84,6 +85,11 @@ module.exports = (regl, {placements, getAreaIndex}) => {
             // Estimate player position index
             let index = getAreaIndex(pos[0], pos[2], 4);
             if (index === -1) return; // Out of bound => do nothing
+            const playback = texture.playbackState();
+            if (playback) {
+                const activePainting = batch.find((painting) => painting.key === playback.key);
+                if (activePainting && Math.abs(activePainting.placementIndex - index) > unloadDist) texture.stopPlayback();
+            }
             // Unload far textures
             batch.slice(0, Math.max(0, index - unloadDist)).map(t => texture.unload(t));
             batch.slice(index + unloadDist).map(t => texture.unload(t));
@@ -92,6 +98,7 @@ module.exports = (regl, {placements, getAreaIndex}) => {
             shownBatch.map(t => texture.load(regl, t, dynamicRes));
             // Frustum / Orientation culling
             shownBatch = shownBatch.filter(t => t.tex && culling(pos, angle, fovX, t));
+            texture.updateVideoTexture();
             // Fetch new textures
             if (index <= batch.length - loadDist) return;
             if (!fetching) {
@@ -103,6 +110,40 @@ module.exports = (regl, {placements, getAreaIndex}) => {
             if (dynamicResTimer) clearTimeout(dynamicResTimer);
             dynamicResTimer = setTimeout(() => dynamicRes = "high", dynamicResPeriod);
         },
-        batch: () => shownBatch
+        batch: () => shownBatch,
+        pickRay: (origin, direction) => {
+            let closest = null;
+            for (const painting of batch) {
+                const bottomLeft = vec3.transformMat4([], [0, 0, 1], painting.model);
+                const bottomRight = vec3.transformMat4([], [1, 0, 1], painting.model);
+                const topLeft = vec3.transformMat4([], [0, 1, 1], painting.model);
+                const horizontal = vec3.sub([], bottomRight, bottomLeft);
+                const vertical = vec3.sub([], topLeft, bottomLeft);
+                const normal = vec3.cross([], horizontal, vertical);
+                const denominator = vec3.dot(direction, normal);
+                if (Math.abs(denominator) < 1e-6) continue;
+                const distance = vec3.dot(vec3.sub([], bottomLeft, origin), normal) / denominator;
+                if (distance <= 0 || (closest && distance >= closest.distance)) continue;
+                const hit = vec3.add([], origin, vec3.scale([], direction, distance));
+                const offset = vec3.sub([], hit, bottomLeft);
+                const x = vec3.dot(offset, horizontal) / vec3.dot(horizontal, horizontal);
+                const y = vec3.dot(offset, vertical) / vec3.dot(vertical, vertical);
+                if (x < 0 || x > 1 || y < 0 || y > 1) continue;
+                closest = { painting, distance };
+            }
+            return closest?.painting ?? null;
+        },
+        playMedia: (key) => {
+            const painting = batch.find((item) => item.key === key);
+            return painting ? texture.playMedia(painting) : Promise.resolve(false);
+        },
+        pauseMedia: () => texture.pauseMedia(),
+        seekMedia: (time) => texture.seekMedia(time),
+        playbackState: () => texture.playbackState(),
+        clearMedia: () => texture.stopPlayback(),
+        destroy: () => {
+            if (dynamicResTimer) clearTimeout(dynamicResTimer);
+            texture.stopPlayback(false);
+        },
     };
 };
