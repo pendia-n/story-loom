@@ -33,14 +33,11 @@ function hilbert(n) {
 function genBorder(n, w, m, random) {
 	w = 0.5 - w / 4;
 	m *= Math.pow(4, n);
-	console.time('hilbert');
 	const points = hilbert(n);
-	console.timeEnd('hilbert');
 	// Add points to fix end
 	points.unshift(points[3]);
 	points.push(points[points.length - 4]);
 	// Calculate direction
-	console.time('dir');
 	let nodes = [];
 	for (let i = 0; i < points.length - 2; i++) {
 		const p0 = points[i];
@@ -50,7 +47,6 @@ function genBorder(n, w, m, random) {
 		const d2 = [p2[0] - p1[0], p2[1] - p1[1]];
 		nodes[i] = { p0, p1, p2, s: Math.sign(d1[0] * d2[1] - d1[1] * d2[0]) };
 	}
-	console.timeEnd('dir');
 	// Fix end
 	let inverse = nodes.slice(0).reverse();
 	inverse = inverse.map(({ p0, p1, p2, s }) => ({ p0: p2, p1, p2: p0, s: -s }));
@@ -68,31 +64,25 @@ function genBorder(n, w, m, random) {
 		}
 	};
 	// Remove random walls
-	console.time('rnd wall');
 	for (let i = 0; i < m; i++) {
 		let r = Math.floor(random() * (nodes.length - 3));
 		while (nodes[r + 1].s !== -1 || nodes[r + 2].s !== -1) r = (r + 1) % (nodes.length - 3);
 		removeWall(r);
 	}
-	console.timeEnd('rnd wall');
 	// Remove bad looking walls
-	console.time('pretty wall');
 	for (let i = 0; i < nodes.length - 3; i++) {
 		if (nodes[i].s === 1 || nodes[i + 3].s === 1) {
 			removeWall(i);
 		}
 	}
-	console.timeEnd('pretty wall');
 	// Generate borders
 	const path = [];
-	console.time('border');
 	nodes.map(({ p0, p1, p2, s }) => {
 		const d1 = [(p1[0] - p0[0]) * w, (p1[1] - p0[1]) * w];
 		const d2 = [(p2[0] - p1[0]) * w, (p2[1] - p1[1]) * w];
 		if (s === 0) return;
 		path.push([p1[0] + s * (d1[0] - d2[0]), p1[1] + s * (d1[1] - d2[1])]);
 	});
-	console.timeEnd('border');
 	// Fix start
 	if (n % 2) path.splice(0, 1, path[path.length - 1]);
 	else path.splice(-1, 1, path[0]);
@@ -100,7 +90,6 @@ function genBorder(n, w, m, random) {
 }
 
 function splitSegments(segments) {
-	console.time('split segments');
     segments = segments.map(s => {
         // Calculate subsegment length
         let l = Math.hypot(s[1][0] - s[0][0], s[1][1] - s[0][1]);
@@ -116,7 +105,6 @@ function splitSegments(segments) {
 			parts: res.slice(0, -1).map((r, i) => [r, res[i + 1]])
 		};
     });
-	console.timeEnd('split segments');
 	return segments;
 }
 
@@ -133,7 +121,6 @@ function merge(dest, org, aStart, aEnd, bStart, bEnd) {
 };
 
 function reorderPlacements(placements, r) {
-    console.time('reorder placements');
     let places = placements;
     placements = [];
     let i = 0, j = places.length - 1;
@@ -177,12 +164,10 @@ function reorderPlacements(placements, r) {
     }
     //console.log(temp.slice(i - len, j + len + 1));
     placements.push(...places.slice(i - len, j + len + 1));
-    console.timeEnd('reorder placements');
 	return placements;
 }
 
 function genGrid(segments, n, r) {
-	console.time('gen grid');
 	let splittedSegments = splitSegments(segments, r);
 	const cellCount = Math.pow(2, n);
 	let gridSegs = Array(cellCount * cellCount).fill().map(() => []);
@@ -224,14 +209,12 @@ function genGrid(segments, n, r) {
 			index = areas.findIndex(a => Math.abs(a[0] - x) + Math.abs(a[1] - y) < r)
 		return index;
 	};
-	console.timeEnd('gen grid');
 	return {getGridSegments, getGridParts, getAreaIndex, placements};
 }
 
 module.exports = function (n = mapSize, r = cellSize, w = wallThickness, m = wallRemoval, h = mapHeight, seed = 0x51a100) {
 	let s = r * Math.pow(2, n);
 	let border = genBorder(n + 1, w, m, makeRandom(seed)).map((v) => [v[0] * s, v[1] * s]);
-	console.time('gen mesh');
 	let segments = border.slice(0, -1).map((p, i) => [p, border[i + 1]]);
 	let normal = segments
 		.map(([[x1, y1], [x2, y2]]) => [Math.sign(y1 - y2), 0, Math.sign(x2 - x1)])
@@ -244,8 +227,6 @@ module.exports = function (n = mapSize, r = cellSize, w = wallThickness, m = wal
 	let elements = Array(position.length / 4)
 		.fill()
 		.flatMap((_, i) => [i * 4, i * 4 + 2, i * 4 + 1, i * 4 + 1, i * 4 + 2, i * 4 + 3]);
-	console.timeEnd('gen mesh');
-    console.log(placements.length + " available painting placements");
 	return {
 		placements,
 		getAreaIndex,

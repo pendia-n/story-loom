@@ -54,16 +54,34 @@ function createMultilineText(ctx, textToWrite, maxWidth, text) {
 }
 
 module.exports = {
-    init(texture, textToWrite, paintingWidth=maxWidth) {
-        var text = [];
-        createMultilineText(ctx, textToWrite, Math.min(paintingWidth*maxWidth, maxWidth), text);
+	init(texture, title, paintingWidth=maxWidth, description='') {
+		ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+		const availableWidth = Math.min(paintingWidth * maxWidth, maxWidth);
+		const titleLines = [];
+		ctx.font = `${textHeight}px Verdana`;
+		createMultilineText(ctx, title || 'Memory', availableWidth, titleLines);
+		const descriptionLines = [];
+		const cleanDescription = String(description || '').trim().replace(/\s+/g, ' ');
+		if (cleanDescription) {
+			ctx.font = '22px Verdana';
+			createMultilineText(ctx, cleanDescription, availableWidth, descriptionLines);
+		}
+		const maxDescriptionLines = 2;
+		const visibleDescription = descriptionLines.slice(0, maxDescriptionLines);
+		const shownTitle = titleLines.slice(0, 2);
+		ctx.textBaseline = 'bottom';
+		ctx.fillStyle = '#f0e8d8';
+		ctx.font = `${textHeight}px Verdana`;
+		let y = textCanvas.height - (visibleDescription.length ? 72 : 16);
+		for (const line of shownTitle) { ctx.fillText(line, 0, y); y += textHeight + 3; }
+		if (visibleDescription.length) {
+			ctx.fillStyle = '#c8c4b4';
+			ctx.font = '22px Verdana';
+			for (const line of visibleDescription) { ctx.fillText(line, 0, y); y += 24; }
+			if (descriptionLines.length > maxDescriptionLines) ctx.fillText('…', 0, y);
+		}
 
-        ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
-        for (var i = 0; i < text.length; i++) {
-            ctx.fillText(text[i], 0, textCanvas.height - (Math.max(text.length, 3) - i) * textHeight);
-        }
-
-        return texture({
+		return texture({
             data: textCanvas,
             min: 'mipmap',
             mipmap: 'nice',

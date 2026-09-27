@@ -87,7 +87,7 @@ module.exports = (regl, {placements, getAreaIndex}) => {
             if (index === -1) return; // Out of bound => do nothing
             const playback = texture.playbackState();
             if (playback) {
-                const activePainting = batch.find((painting) => painting.key === playback.key);
+				const activePainting = batch.find((painting) => painting.key === playback.key);
                 if (activePainting && Math.abs(activePainting.placementIndex - index) > unloadDist) texture.stopPlayback();
             }
             // Unload far textures
@@ -133,8 +133,8 @@ module.exports = (regl, {placements, getAreaIndex}) => {
             }
             return closest?.painting ?? null;
         },
-        playMedia: (key) => {
-            const painting = batch.find((item) => item.key === key);
+		playMedia: (key) => {
+			const painting = batch.find((item) => item.key === key);
             return painting ? texture.playMedia(painting) : Promise.resolve(false);
         },
         pauseMedia: () => texture.pauseMedia(),

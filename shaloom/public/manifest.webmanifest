@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Shaloom — a place for your scenes",
+  "short_name": "Shaloom",
+  "description": "Keep the scenes that make up your chapters and walk through them at your pace.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3ead8",
+  "theme_color": "#101915",
+  "icons": [
+    {
+      "src": "/shaloom.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

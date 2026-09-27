@@ -8,7 +8,8 @@ let activePlayback = null;
 function galleryUrl(from, count) {
 	const params = new URLSearchParams({ from: String(from), count: String(count) });
 	if (window.SHALOOM_SHUFFLE_SEED) params.set('shuffle', window.SHALOOM_SHUFFLE_SEED);
-	return `/api/gallery-media?${params}`;
+	const endpoint = window.SHALOOM_MEDIA_ENDPOINT || '/api/gallery-media';
+	return `${endpoint}?${params}`;
 }
 
 function playMark(ctx, width, height) {
@@ -29,30 +30,53 @@ function playMark(ctx, width, height) {
 }
 
 async function loadImage(regl, painting, resolution = 'high') {
-	let image;
+	let source;
+	const maxEdge = resolution === 'high' ? 2048 : 1024;
+	let width = 1;
+	let height = 1;
+	const canvas = document.createElement('canvas');
 	try {
-		const response = await fetch(painting.posterUrl || painting.url, { cache: 'force-cache' });
-		if (!response.ok) throw new Error(`Media request failed (${response.status})`);
-		image = await createImageBitmap(await response.blob());
+		if (painting.isVideo) {
+			const video = document.createElement('video');
+			video.preload = 'metadata';
+			video.muted = true;
+			video.playsInline = true;
+			video.src = painting.url;
+			await new Promise((resolve, reject) => {
+				const timeout = window.setTimeout(() => reject(new Error('Video preview timed out.')), 12000);
+				video.addEventListener('loadeddata', () => { window.clearTimeout(timeout); resolve(); }, { once: true });
+				video.addEventListener('error', () => { window.clearTimeout(timeout); reject(new Error('Video preview could not load.')); }, { once: true });
+			});
+			if (video.duration > 0) {
+				await new Promise((resolve) => {
+					const timer = window.setTimeout(resolve, 1500);
+					video.addEventListener('seeked', () => { window.clearTimeout(timer); resolve(); }, { once: true });
+					video.currentTime = Math.min(0.15, video.duration / 2);
+				});
+			}
+			source = video;
+		} else {
+			const response = await fetch(painting.url, { cache: 'force-cache' });
+			if (!response.ok) throw new Error(`Media request failed (${response.status})`);
+			source = await createImageBitmap(await response.blob());
+		}
+		const scale = Math.min(1, maxEdge / Math.max(source.videoWidth || source.width, source.videoHeight || source.height));
+		width = Math.max(1, Math.round((source.videoWidth || source.width) * scale));
+		height = Math.max(1, Math.round((source.videoHeight || source.height) * scale));
+		canvas.width = width;
+		canvas.height = height;
+		const ctx = canvas.getContext('2d', { alpha: false });
+		if (!ctx) return emptyImage(regl);
+		ctx.imageSmoothingEnabled = true;
+		ctx.imageSmoothingQuality = 'high';
+		ctx.drawImage(source, 0, 0, width, height);
+		if (painting.isVideo) playMark(ctx, width, height);
+		source.close?.();
+		if (painting.isVideo) { source.pause(); source.removeAttribute('src'); source.load(); }
 	} catch (error) {
 		console.warn('Gallery artwork could not be loaded.', error);
 		return emptyImage(regl);
 	}
-
-	const maxEdge = resolution === 'high' ? 2048 : 1024;
-	const scale = Math.min(1, maxEdge / Math.max(image.width, image.height));
-	const width = Math.max(1, Math.round(image.width * scale));
-	const height = Math.max(1, Math.round(image.height * scale));
-	const canvas = document.createElement('canvas');
-	canvas.width = width;
-	canvas.height = height;
-	const ctx = canvas.getContext('2d', { alpha: false });
-	if (!ctx) return emptyImage(regl);
-	ctx.imageSmoothingEnabled = true;
-	ctx.imageSmoothingQuality = 'high';
-	ctx.drawImage(image, 0, 0, width, height);
-	if (painting.isVideo) playMark(ctx, width, height);
-	image.close?.();
 
 	const texture = (unusedTextures.pop() || regl.texture)({
 		data: canvas,
@@ -62,7 +86,7 @@ async function loadImage(regl, painting, resolution = 'high') {
 		wrapT: 'clamp',
 		flipY: true,
 	});
-	return [texture, (paintingWidth) => text.init((unusedTextures.pop() || regl.texture), painting.title, paintingWidth), width / height, width, height, painting.isVideo ? canvas : null];
+	return [texture, (paintingWidth) => text.init((unusedTextures.pop() || regl.texture), painting.title, paintingWidth, painting.description), width / height, width, height, painting.isVideo ? canvas : null];
 }
 
 function emptyImage(regl) {

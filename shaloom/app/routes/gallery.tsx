@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 type LightingMode = "dim" | "lighter" | "daylight" | "twilight" | "party";
 type FrameMode = "extended" | "wood" | "silver";
@@ -40,6 +40,7 @@ const artBrightness: Record<LightingMode, number> = {
 declare global {
 	interface Window {
 		SHALOOM_SHUFFLE_SEED?: string;
+		SHALOOM_MEDIA_ENDPOINT?: string;
 		SHALOOM_LIGHTING?: LightingMode;
 		SHALOOM_FRAME_STYLE?: number;
 		SHALOOM_ART_SCALE?: number;
@@ -63,6 +64,7 @@ export function meta() {
 }
 
 export default function Gallery() {
+	const { chapterId } = useParams();
 	const stageRef = useRef<HTMLElement>(null);
 	const location = useLocation();
 	const navigate = useNavigate();
@@ -70,13 +72,16 @@ export default function Gallery() {
 	const [status, setStatus] = useState("Loading the room controls…");
 	const [artworkReady, setArtworkReady] = useState(false);
 	const [galleryCount, setGalleryCount] = useState<number | null>(null);
+	const [galleryOrder, setGalleryOrder] = useState("stable");
 	const [error, setError] = useState("");
+	const [privateCode, setPrivateCode] = useState("");
+	const [needsPrivateCode, setNeedsPrivateCode] = useState(false);
 	const [videoError, setVideoError] = useState(false);
 	const [selected, setSelected] = useState<SelectedMedia | null>(null);
 	const [playback, setPlayback] = useState<PlaybackState>(null);
 	const [lighting, setLighting] = useState<LightingMode>("dim");
 	const [frame, setFrame] = useState<FrameMode>("wood");
-	const [artScale, setArtScale] = useState(1.1);
+	const [artScale, setArtScale] = useState(1);
 
 	useEffect(() => {
 		window.SHALOOM_LIGHTING = lighting;
@@ -97,7 +102,8 @@ export default function Gallery() {
 			if (active) setError("The browser paused the 3D room. Close other 3D tabs, then reopen the gallery.");
 		};
 		canvas.addEventListener("webglcontextlost", onContextLost);
-		window.SHALOOM_SHUFFLE_SEED = shuffleSeed;
+		window.SHALOOM_SHUFFLE_SEED = chapterId ? (window.crypto?.randomUUID?.() ?? String(Date.now())) : shuffleSeed;
+		window.SHALOOM_MEDIA_ENDPOINT = chapterId ? `/api/chapters/${encodeURIComponent(chapterId)}/gallery-media` : "/api/gallery-media";
 		setError("");
 		setStatus("Loading the room and its frames…");
 		const onGalleryReady = () => {
@@ -131,15 +137,23 @@ export default function Gallery() {
 		document.body.appendChild(script);
 
 		const params = new URLSearchParams({ from: "0", count: "50" });
-		if (shuffleSeed) params.set("shuffle", shuffleSeed);
-		fetch(`/api/gallery-media?${params}`)
-			.then((response) => response.ok ? response.json() as Promise<{ items?: GalleryItem[]; total?: number }> : Promise.reject(new Error("Media list unavailable")))
+		if (window.SHALOOM_SHUFFLE_SEED) params.set("shuffle", window.SHALOOM_SHUFFLE_SEED);
+		fetch(`${window.SHALOOM_MEDIA_ENDPOINT}?${params}`)
+			.then((response) => {
+				if (!response.ok) {
+					if (chapterId && response.status === 404) setNeedsPrivateCode(true);
+					if (chapterId && response.status === 401) setError("Sign in before entering this gallery.");
+					throw new Error("Media list unavailable");
+				}
+				return response.json() as Promise<{ items?: GalleryItem[]; total?: number; order?: string }>;
+			})
 			.then((data) => {
 				if (!active) return;
 				setGalleryCount(data.total ?? data.items?.length ?? 0);
-				if (!data.items?.length) setError("There are no demo media in the gallery yet.");
+				setGalleryOrder(data.order ?? "stable");
+			if (!data.items?.length) setError(chapterId ? "This chapter has no media yet. Add images or videos from its chapter page." : "There are no demo media in the gallery yet.");
 			})
-			.catch(() => { if (active) setError("The gallery could not reach its media store."); });
+			.catch(() => { if (active) setError(chapterId ? "Sign in or enter this private chapter’s code to view it." : "The gallery could not reach its media store."); });
 
 		const playbackTimer = window.setInterval(() => {
 			if (active) setPlayback(window.ShaloomGallery?.playbackState() ?? null);
@@ -165,9 +179,10 @@ export default function Gallery() {
 			window.ShaloomGallery?.destroy();
 			delete window.ShaloomGallery;
 			delete window.SHALOOM_SHUFFLE_SEED;
+			delete window.SHALOOM_MEDIA_ENDPOINT;
 			script.remove();
 		};
-	}, [location.search, shuffleSeed]);
+	}, [location.search, shuffleSeed, chapterId]);
 
 	async function toggleFullscreen() {
 		const target = stageRef.current;
@@ -181,7 +196,20 @@ export default function Gallery() {
 	}
 
 	function shuffle() {
-		navigate(`/gallery?shuffle=${encodeURIComponent(crypto.randomUUID())}`);
+		navigate(`/demo?shuffle=${encodeURIComponent(crypto.randomUUID())}`);
+	}
+
+	async function enterPrivateChapter(event: React.FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		const csrf = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("sl_csrf="))?.slice(8);
+		let csrfToken = csrf ? decodeURIComponent(csrf) : "";
+		if (!csrfToken) {
+			await fetch("/api/auth/csrf", { credentials: "same-origin" });
+			csrfToken = decodeURIComponent(document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith("sl_csrf="))?.slice(8) ?? "");
+		}
+		const response = await fetch(`/api/chapters/${encodeURIComponent(chapterId ?? "")}/access`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-csrf-token": csrfToken }, body: JSON.stringify({ code: privateCode }) });
+		if (response.ok) window.location.reload();
+		else setError(response.status === 401 ? "Sign in before entering this private gallery." : "That chapter code was not accepted.");
 	}
 
 	function clearSelection() {
@@ -208,7 +236,7 @@ export default function Gallery() {
 			<canvas id="gallery-canvas" className="gallery-canvas" tabIndex={0} aria-label="Walkable 3D gallery" />
 			{!artworkReady && !error && <div className="gallery-loader" role="status">Setting the first frames…</div>}
 			<div className="gallery-topbar">
-				<Link className="gallery-brand" to="/"><img src="/shaloom.svg" alt="" /> Shaloom</Link>
+				<Link className="gallery-brand" to={chapterId ? "/gallery" : "/"}><img src="/shaloom.svg" alt="" /> Shaloom</Link>
 				<div className="gallery-top-actions">
 					<details className="gallery-look-menu">
 						<summary className="glass-button" aria-label="Open gallery lighting, frame, and size settings">Gallery look</summary>
@@ -225,17 +253,14 @@ export default function Gallery() {
 									{frameModes.map((mode) => <button key={mode.id} type="button" className="look-choice" aria-pressed={frame === mode.id} onClick={() => setFrame(mode.id)}>{mode.label}</button>)}
 								</div>
 							</fieldset>
-							<div className="art-size-control">
+						<div className="art-size-control">
 								<span>Artwork size · {Math.round(artScale * 100)}%</span>
-								<div>
-									<button type="button" className="look-choice size-choice" aria-label="Make paintings smaller" onClick={() => setArtScale((value) => Math.max(0.9, Math.round((value - 0.1) * 10) / 10))}>−</button>
-									<button type="button" className="look-choice size-choice" aria-label="Make paintings larger" onClick={() => setArtScale((value) => Math.min(1.3, Math.round((value + 0.1) * 10) / 10))}>+</button>
-								</div>
+								<input type="range" min="100" max="120" step="10" value={Math.round(artScale * 100)} onChange={(event) => setArtScale(Number(event.currentTarget.value) / 100)} aria-label="Artwork size percentage" />
 							</div>
 						</div>
 					</details>
 					<button type="button" className="glass-button fullscreen-button" onClick={() => void toggleFullscreen()} aria-label="Toggle fullscreen">⛶ <span>Fullscreen</span></button>
-					<Link className="glass-button close-gallery-button" to="/">Close gallery <span aria-hidden="true">×</span></Link>
+					<Link className="glass-button close-gallery-button" to={chapterId ? "/gallery" : "/"}>Close gallery <span aria-hidden="true">×</span></Link>
 				</div>
 			</div>
 
@@ -256,7 +281,7 @@ export default function Gallery() {
 								min="0"
 								max={playback?.duration || 0}
 								step="0.1"
-								value={playback?.key === selected.key ? Math.min(playback.currentTime, playback.duration || 0) : 0}
+				value={playback?.key === selected.key ? Math.min(playback.currentTime, playback.duration || 0) : 0}
 								disabled={!playback?.duration}
 								aria-label="Seek within the video playing on the painting"
 								onChange={(event) => window.ShaloomGallery?.seekMedia(Number(event.currentTarget.value))}
@@ -270,14 +295,18 @@ export default function Gallery() {
 
 			<div className="gallery-bottom-bar">
 				<div className="gallery-instructions">
-					<span className="gallery-status">{galleryCount === null ? "Preparing gallery" : `${galleryCount} scenes · ${shuffleSeed ? "intentional shuffle" : "upload time order"}`}</span>
+					<span className="gallery-status">{galleryCount === null ? "Preparing gallery" : `${galleryCount} scenes · ${chapterId ? (galleryOrder === "shuffled" ? "randomized order" : "your planned order") : (shuffleSeed ? "intentional shuffle" : "upload time order")}`}</span>
 					<span className="gallery-help">{status}</span>
-					{error && <span className="gallery-error" role="status">{error}</span>}
+					{error && <span className="gallery-error" role="status">{error} {chapterId && error.includes("Sign in") && <Link to="/login">Sign in ↗</Link>}</span>}
+					{chapterId && needsPrivateCode && <form className="gallery-code-form" onSubmit={(event) => void enterPrivateChapter(event)}><input aria-label="Private chapter code" placeholder="8-character chapter code" value={privateCode} onChange={(event) => setPrivateCode(event.target.value)} minLength={8} maxLength={8} pattern="[A-Za-z0-9]{8}" required /><button className="gallery-pill">Enter</button></form>}
 				</div>
 				<div className="gallery-actions">
+					{chapterId && <Link className="gallery-pill" to={`/chapter/${chapterId}`}>Edit chapter</Link>}
+					{!chapterId && <>
 					{shuffleSeed
-						? <button className="gallery-pill" onClick={() => navigate("/gallery")}>Use upload order</button>
+						? <button className="gallery-pill" onClick={() => navigate("/demo")}>Use upload order</button>
 						: <button className="gallery-pill" onClick={shuffle}>Shuffle on purpose</button>}
+					</>}
 				</div>
 			</div>
 		</main>

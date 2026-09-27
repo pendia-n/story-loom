@@ -6,6 +6,7 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
+import { useEffect } from "react";
 
 import type { Route } from "./+types/root";
 import "./app.css";
@@ -13,7 +14,19 @@ import "./app.css";
 export const links: Route.LinksFunction = () => [
 	{ rel: "icon", href: "/shaloom.svg", type: "image/svg+xml" },
 	{ rel: "apple-touch-icon", href: "/shaloom.svg" },
+	{ rel: "manifest", href: "/manifest.webmanifest" },
 ];
+
+function ServiceWorkerRegistration() {
+	useEffect(() => {
+		if ("serviceWorker" in navigator && window.isSecureContext) {
+			navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
+				// Keep the core app usable when installation is unavailable.
+			});
+		}
+	}, []);
+	return null;
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -27,6 +40,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
+        <ServiceWorkerRegistration />
         <ScrollRestoration />
         <Scripts />
       </body>
