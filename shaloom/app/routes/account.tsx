@@ -180,8 +180,8 @@ export default function Account() {
 			<div className="account-bottom-links"><Link to="/spark">Explore public chapters</Link><Link to="/pricing">Compare plans</Link><button onClick={() => void logout()}>Sign out</button></div>
 		</section>}
 
-		{path === "/profile" && user && <SettingsPanel user={user} mode="profile" onUserChanged={setUser} onNotice={setNotice} onError={setError} />}
-		{path === "/security" && user && <SettingsPanel user={user} mode="security" onUserChanged={setUser} onNotice={setNotice} onError={setError} />}
+		{path === "/profile" && user && <div className="account-settings"><SettingsPanel user={user} mode="profile" onUserChanged={setUser} onNotice={setNotice} onError={setError} /><SettingsPanel user={user} mode="security" onUserChanged={setUser} onNotice={(value) => { setNotice(value); void refreshUser(); }} onError={setError} /></div>}
+		{path === "/security" && user && <SettingsPanel user={user} mode="security" onUserChanged={setUser} onNotice={(value) => { setNotice(value); void refreshUser(); }} onError={setError} />}
 		{path === "/pricing" && <PricingPanel user={user} onError={setError} onNotice={setNotice} />}
 		{path === "/billing" && user && <BillingPanel user={user} onError={setError} onNotice={setNotice} />}
 		{path === "/spark" && user && <SparkPanel />}
