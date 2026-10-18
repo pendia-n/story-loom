@@ -1,4 +1,5 @@
 import { sniffAndCleanImage, sniffMp4, type AcceptedMedia } from "./media-clean";
+import { sparkQueries } from "./spark-discovery";
 import {
 	 authenticate, assertSameOrigin, chapterAccessCookie, clearCsrfCookie, clearRecoveryCookie, clearSessionCookie,
 	cookieValue, csrfCookie, hasCsrf, hashSecret, jsonResponse, mintSession, randomToken,
@@ -296,9 +297,14 @@ async function apiChapters(request: Request, env: ShaloomEnv, user: UserRow): Pr
 	return jsonResponse({ id, title, isPrivate: false }, 201);
 }
 
-async function apiSpark(env: ShaloomEnv): Promise<Response> {
-	const result = await env.DB.prepare("SELECT c.id, c.title, c.created_at, u.username, COUNT(m.id) AS media_count FROM chapters c JOIN users u ON u.id = c.user_id LEFT JOIN media m ON m.chapter_id = c.id WHERE c.is_private = 0 GROUP BY c.id ORDER BY c.created_at DESC LIMIT 100").all();
-	return jsonResponse({ chapters: result.results ?? [] });
+async function apiSpark(request: Request, env: ShaloomEnv): Promise<Response> {
+	const query = sparkQueries(new URL(request.url).searchParams);
+	const count = await env.DB.prepare(query.countSql).bind(...query.bindings).first<{ total: number }>();
+	const total = Number(count?.total ?? 0);
+	const pages = Math.max(1, Math.ceil(total / query.pageSize));
+	const page = Math.min(query.requestedPage, pages);
+	const result = await env.DB.prepare(query.pageSql).bind(...query.bindings, query.pageSize, (page - 1) * query.pageSize).all();
+	return jsonResponse({ chapters: result.results ?? [], total, page, pages, pageSize: query.pageSize });
 }
 
 async function apiChapterGallery(request: Request, env: ShaloomEnv, user: UserRow, chapterId: string): Promise<Response> {
@@ -775,7 +781,7 @@ export async function handleLoomApi(request: Request, env: ShaloomEnv): Promise<
 	if (path === "/api/billing/checkout" && request.method === "POST") return apiCheckout(request, env, user);
 	if (path === "/api/billing/downgrade" && request.method === "POST") return apiDowngradeSubscription(request, env, user);
 	if (path === "/api/billing/cancel" && request.method === "POST") return apiCancelSubscription(request, env, user);
-	if (path === "/api/spark" && request.method === "GET") return apiSpark(env);
+	if (path === "/api/spark" && request.method === "GET") return apiSpark(request, env);
 	const accessMatch = path.match(/^\/api\/chapters\/([\w-]+)\/access$/);
 	if (accessMatch && request.method === "POST") return apiChapterAccess(request, env, user, accessMatch[1]);
 	const chapterGalleryMatch = path.match(/^\/api\/chapters\/([\w-]+)\/gallery-media$/);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import "../spark.css";
 
 type User = { id: string; username: string; plan: "free" | "standard" | "zealous"; recoveryEnabled: boolean; subscriptionStatus: string | null };
 type Chapter = { id: string; title: string; is_private: number; media_count: number; created_at: number };
@@ -239,10 +240,50 @@ function BillingPanel({ user, onError, onNotice }: { user: User; onError: (value
 }
 
 function SparkPanel() {
-	const [chapters, setChapters] = useState<Array<{ id: string; title: string; username: string; media_count: number }>>([]);
+	const [sparkRetry, setSparkRetry] = useState(0);
+	const [params, setParams] = useSearchParams();
+	const query = params.toString();
+	const [search, setSearch] = useState(params.get("q") ?? "");
+	const [result, setResult] = useState<{ chapters: Array<{ id: string; title: string; username: string; media_count: number; video_count: number; gif_count: number; created_at: number }>; total: number; page: number; pages: number; pageSize: number } | null>(null);
 	const [error, setError] = useState("");
-	useEffect(() => { api<ApiReply & { chapters?: Array<{ id: string; title: string; username: string; media_count: number }> }>("/api/spark").then((data) => setChapters(data.chapters ?? [])).catch((reason: Error) => setError(reason.message)); }, []);
-	return <section><p className="eyebrow">OPEN GALLERIES FROM THE COMMUNITY</p><h1>Spark</h1><p className="account-copy">Public chapters are here to explore. You need to be signed in to enter any gallery.</p>{error && <p className="account-alert">{error}</p>}{chapters.length ? <div className="chapter-grid">{chapters.map((item) => <article className="chapter-card" key={item.id}><span className="chapter-count">BY {item.username} · {item.media_count} SCENES</span><h2>{item.title}</h2><Link className="button button-primary" to={`/gallery/${item.id}`}>Enter gallery ↗</Link></article>)}</div> : !error && <div className="account-empty"><h2>The room is quiet for now.</h2><p>Public chapters will appear here as people open their collections.</p></div>}</section>;
+	const [loading, setLoading] = useState(true);
+	useEffect(() => { setSearch(params.get("q") ?? ""); }, [query]);
+	useEffect(() => {
+		const controller = new AbortController();
+		setLoading(true); setError("");
+		api<ApiReply & NonNullable<typeof result>>(`/api/spark?${query}`, { signal: controller.signal })
+			.then((data) => { if (!controller.signal.aborted) setResult(data); })
+			.catch((reason: Error) => { if (!controller.signal.aborted) setError(reason.message); })
+			.finally(() => { if (!controller.signal.aborted) setLoading(false); });
+		return () => controller.abort();
+	}, [query, sparkRetry]);
+	function change(key: string, value: string) {
+		setParams((current) => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); if (key !== "page") next.delete("page"); return next; });
+	}
+	const filtered = ["q", "creator", "media", "size", "age"].some((key) => Boolean(params.get(key)));
+	const reset = () => { setSearch(""); setParams({}); };
+	return <section className="spark-page">
+		<p className="eyebrow">OPEN GALLERIES FROM THE COMMUNITY</p><h1>Spark</h1>
+		<p className="account-copy">Find a collection to spend time with. Search for a title or creator, or choose the kind of visit you have in mind. All galleries here are public to signed-in members.</p>
+		<div className="spark-discovery">
+			<form className="spark-search" role="search" onSubmit={(event) => { event.preventDefault(); change("q", search.trim()); }}>
+				<label className="account-field" htmlFor="spark-search">Search galleries or creators<input id="spark-search" type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Try a title or username" maxLength={100} /></label>
+				<button className="button button-primary" type="submit">Search</button>
+			</form>
+			<div className="spark-filter-row"><fieldset className="spark-media"><legend>What would you like to see?</legend><div>{[["", "All media"], ["images", "Images only"], ["video", "With video"], ["gif", "With GIFs"]].map(([value, label]) => <button className="spark-chip" type="button" key={value} aria-pressed={(params.get("media") ?? "") === value} onClick={() => change("media", value)}>{label}</button>)}</div></fieldset>
+				<label className="account-field">Collection size<select value={params.get("size") ?? ""} onChange={(event) => change("size", event.target.value)}><option value="">Any size</option><option value="small">1–8 scenes</option><option value="medium">9–50 scenes</option><option value="large">51+ scenes</option></select></label>
+				<label className="account-field">Added<select value={params.get("age") ?? ""} onChange={(event) => change("age", event.target.value)}><option value="">Any time</option><option value="week">Past 7 days</option><option value="month">Past 30 days</option></select></label>
+				<label className="account-field">Sort by<select value={params.get("sort") ?? ""} onChange={(event) => change("sort", event.target.value)}><option value="">Newest first</option><option value="oldest">Oldest first</option><option value="title">Title A–Z</option><option value="smallest">Fewest scenes</option><option value="largest">Most scenes</option></select></label>
+			</div>
+		</div>
+		<div className="spark-results-heading"><p role="status" aria-live="polite">{loading ? "Finding galleries…" : error ? "Galleries could not be loaded." : result ? `${result.total === 0 ? 0 : (result.page - 1) * result.pageSize + 1}–${Math.min(result.page * result.pageSize, result.total)} of ${result.total} ${result.total === 1 ? "gallery" : "galleries"}${params.get("q") ? ` matching “${params.get("q")}”` : ""}` : ""}</p>{(filtered || params.get("sort")) && <button type="button" className="spark-reset" onClick={reset}>Clear filters</button>}</div>
+		{params.get("creator") && <p className="account-footnote">Creator: <strong>{params.get("creator")}</strong> <button type="button" className="spark-reset" onClick={() => change("creator", "")}>Remove creator filter</button></p>}
+		{error && <div className="account-alert" role="alert">{error}<button type="button" className="spark-reset" onClick={() => setSparkRetry((value) => value + 1)}>Try again</button></div>}
+		<div aria-busy={loading}>
+			{!loading && !error && result && (result.chapters.length ? <div className="chapter-grid spark-grid">{result.chapters.map((item) => <article className="chapter-card" key={item.id}><span className="chapter-count">BY {item.username}</span><h2>{item.title}</h2><p>{item.media_count} {item.media_count === 1 ? "scene" : "scenes"}{item.video_count > 0 ? ` · ${item.video_count} ${item.video_count === 1 ? "video" : "videos"}` : ""}{item.gif_count > 0 ? ` · ${item.gif_count} ${item.gif_count === 1 ? "GIF" : "GIFs"}` : ""}</p><p>Added {new Date(item.created_at).toLocaleDateString()}</p><div className="chapter-actions"><Link className="button button-primary" to={`/gallery/${item.id}`}>Enter gallery ↗</Link><button type="button" className="spark-reset" onClick={() => change("creator", item.username)}>More by {item.username}</button></div></article>)}</div> : <div className="account-empty"><h2>{filtered ? "No galleries match this combination." : "The room is quiet for now."}</h2><p>{filtered ? "Try a different title or creator, broaden the collection size, or clear your filters." : "Public chapters will appear here as people open their collections."}</p>{filtered && <button type="button" className="button button-outline" onClick={reset}>Show all galleries</button>}</div>)}
+		</div>
+		{!loading && !error && result && result.pages > 1 && <nav className="spark-pagination" aria-label="Gallery result pages"><button type="button" className="button button-outline" disabled={result.page <= 1} onClick={() => change("page", String(result.page - 1))}>← Previous</button><span>Page {result.page} of {result.pages}</span><button type="button" className="button button-outline" disabled={result.page >= result.pages} onClick={() => change("page", String(result.page + 1))}>Next →</button></nav>}
+	</section>;
 }
 
 function ChapterEditor({ chapterId, user }: { chapterId: string; user: User | null }) {
