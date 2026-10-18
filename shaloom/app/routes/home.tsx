@@ -19,6 +19,7 @@ const exhibitionIdeas = [
 ];
 
 const questions = [
+	{ question: "Can I pay for add-ons with USDC?", answer: "One-time chapter and media add-ons support card payments and eligible USDC payments through Stripe. Choose Crypto at checkout when Stripe offers it, then follow Stripe’s wallet and network instructions. Add-on prices are charged in USD. Crypto is not offered for subscriptions. Add-on capacity is added after Stripe confirms payment." },
 	{ question: "What happens after I upload?", answer: "You can add or edit a description for each image, remove media, and return to your chapter to manage it. Paid plans also let you drag media into a chosen order. Open the finished gallery to walk through the collection, or send its link to someone you want to invite." },
 	{ question: "Can someone visit without an account?", answer: "The sample exhibition is open without an account. To visit a member’s public or private chapter, visitors need to sign in to Shaloom. Private chapters also require the creator’s 8-character access code, unless you own the chapter." },
 	{ question: "Can I choose the order of my images?", answer: "Free chapters use randomized display. Standard and Zealous include planned ordering with drag-and-drop, useful for a series or selected comic pages." },

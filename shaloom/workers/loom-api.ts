@@ -1,5 +1,6 @@
 import { sniffAndCleanImage, sniffMp4, type AcceptedMedia } from "./media-clean";
 import { sparkQueries } from "./spark-discovery";
+import { applyCheckoutPaymentPolicy, isPaidCheckoutEvent } from "./checkout-payment-policy";
 import {
 	 authenticate, assertSameOrigin, chapterAccessCookie, clearCsrfCookie, clearRecoveryCookie, clearSessionCookie,
 	cookieValue, csrfCookie, hasCsrf, hashSecret, jsonResponse, mintSession, randomToken,
@@ -538,6 +539,7 @@ async function apiCheckout(request: Request, env: ShaloomEnv, user: UserRow): Pr
 	const productKey = `${kind}_${tier}`;
 	const form = new URLSearchParams();
 	form.set("mode", kind === "subscription" ? "subscription" : "payment");
+	applyCheckoutPaymentPolicy(form, kind as "subscription" | "chapter_slots" | "media_addon");
 	form.set("line_items[0][price]", price);
 	form.set("line_items[0][quantity]", "1");
 	form.set("client_reference_id", user.id);
@@ -678,7 +680,7 @@ async function handleStripeWebhook(request: Request, env: ShaloomEnv): Promise<R
 	if (await env.DB.prepare("SELECT event_id FROM stripe_events WHERE event_id = ?").bind(event.id).first()) return jsonResponse({ received: true, duplicate: true });
 	const now = Date.now();
 	if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
-		if (object.payment_status !== "paid") return jsonResponse({ received: true, pending: true });
+		if (!isPaidCheckoutEvent(event.type, object)) return jsonResponse({ received: true, pending: true });
 		const userId = object.metadata?.account_id || object.client_reference_id;
 		const kind = object.metadata?.kind;
 		const tier = object.metadata?.tier;
