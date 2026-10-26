@@ -26,7 +26,7 @@ const questions = [
 	{ question: "What can I upload?", answer: "Free includes one public chapter with up to 8 PNG or JPG images, at up to 5 MB each. Standard and Zealous also support GIF and MP4, with larger file sizes and chapter allowances. Compare plans for the full limits." },
 	{ question: "Who can see my chapter?", answer: "Free chapters are public to signed-in members and appear in Spark. Standard and Zealous let you make a chapter private and share an access code. Image metadata is cleansed on upload; video metadata is not cleansed." },
 	{ question: "What happens if my paid plan ends?", answer: "Existing chapters and media remain, but Free limits apply to new uploads and chapters. Under the current policy, all your chapters become public to signed-in members and private access codes are removed. Check your collection before ending a paid plan." },
-	{ question: "Can I cancel or request a refund?", answer: "You can manage your membership from Billing. A subscription charge can be refunded within 72 hours; after that, cancellation stops renewal and access continues through the paid period. One-time chapter and media add-ons are non-refundable." },
+	{ question: "Can I cancel or request a refund?", answer: "Subscriptions renew monthly through Stripe Checkout until canceled. Cancel within 72 hours of the latest successful subscription payment to end your subscription immediately and request a 50% refund of that payment. After 72 hours, cancellation stops renewal without a refund and access continues through the paid period. One-time chapter and media add-ons are non-refundable." },
 ];
 
 export default function Home() {

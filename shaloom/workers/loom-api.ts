@@ -1,6 +1,6 @@
 import { sniffAndCleanImage, sniffMp4, type AcceptedMedia } from "./media-clean";
 import { sparkQueries } from "./spark-discovery";
-import { applyCheckoutPaymentPolicy, isPaidCheckoutEvent } from "./checkout-payment-policy";
+import { applyCheckoutOffer, checkoutOffer, subscriptionRefundPolicy, isPaidCheckoutEvent, type CheckoutKind, type PaidTier } from "./checkout-payment-policy";
 import {
 	 authenticate, assertSameOrigin, chapterAccessCookie, clearCsrfCookie, clearRecoveryCookie, clearSessionCookie,
 	cookieValue, csrfCookie, hasCsrf, hashSecret, jsonResponse, mintSession, randomToken,
@@ -510,16 +510,6 @@ async function stripeRequest(env: ShaloomEnv, path: string, method = "GET", form
 	return data;
 }
 
-function priceFor(env: ShaloomEnv, kind: string, tier: Tier): string | null {
-	if (kind === "subscription" && tier === "standard") return env.STRIPE_PRICE_STANDARD_MONTHLY ?? null;
-	if (kind === "subscription" && tier === "zealous") return env.STRIPE_PRICE_ZEALOUS_MONTHLY ?? null;
-	if (kind === "chapter_slots" && tier === "standard") return env.STRIPE_PRICE_STANDARD_CHAPTERS ?? null;
-	if (kind === "chapter_slots" && tier === "zealous") return env.STRIPE_PRICE_ZEALOUS_CHAPTERS ?? null;
-	if (kind === "media_addon" && tier === "standard") return env.STRIPE_PRICE_STANDARD_MEDIA ?? null;
-	if (kind === "media_addon" && tier === "zealous") return env.STRIPE_PRICE_ZEALOUS_MEDIA ?? null;
-	return null;
-}
-
 async function apiCheckout(request: Request, env: ShaloomEnv, user: UserRow): Promise<Response> {
 	const mutation = await enforceMutation(request, user);
 	if (mutation) return mutation;
@@ -534,14 +524,10 @@ async function apiCheckout(request: Request, env: ShaloomEnv, user: UserRow): Pr
 		if (user.plan !== tier) return fail("The media pack must match your current paid tier.", 409);
 	}
 	if (kind === "chapter_slots" && user.plan !== tier) return fail("The chapter pack must match your current paid tier.", 409);
-	const price = priceFor(env, kind, tier);
-	if (!price) return fail("Stripe price IDs are not configured yet. Create the Stripe prices and add their IDs to the Worker settings.", 503);
+	if (!stripeApiKey(env)) return fail("Checkout is unavailable. Please try again later.", 503);
 	const productKey = `${kind}_${tier}`;
 	const form = new URLSearchParams();
-	form.set("mode", kind === "subscription" ? "subscription" : "payment");
-	applyCheckoutPaymentPolicy(form, kind as "subscription" | "chapter_slots" | "media_addon");
-	form.set("line_items[0][price]", price);
-	form.set("line_items[0][quantity]", "1");
+	applyCheckoutOffer(form, kind as CheckoutKind, tier);
 	form.set("client_reference_id", user.id);
 	form.set("success_url", `${new URL(request.url).origin}/billing?checkout=success`);
 	form.set("cancel_url", `${new URL(request.url).origin}/pricing?checkout=cancelled`);
@@ -561,23 +547,40 @@ async function apiCheckout(request: Request, env: ShaloomEnv, user: UserRow): Pr
 		const session = await stripeRequest(env, "/checkout/sessions", "POST", form, `checkout-${user.id}-${productKey}-${crypto.randomUUID()}`);
 		return jsonResponse({ url: session.url });
 	} catch (error) {
-		return fail("Stripe could not start checkout. Check the configured price ID and billing settings, then try again.", 502);
+		return fail("Stripe could not start checkout. Please try again later.", 502);
 	}
+}
+
+async function findMonthlyOffer(env: ShaloomEnv, tier: PaidTier): Promise<string> {
+	const offer = checkoutOffer("subscription", tier);
+	let cursor = "";
+	for (let page = 0; page < 20; page++) {
+		const query = new URLSearchParams({ active: "true", type: "recurring", currency: "usd", limit: "100", "expand[]": "data.product" });
+		if (cursor) query.set("starting_after", cursor);
+		const prices = await stripeRequest(env, `/prices?${query}`);
+		const match = (prices.data ?? []).find((price: any) => price.unit_amount === offer.amount && price.recurring?.interval === "month" && price.recurring.interval_count === 1 && price.product?.active && (price.product.name === offer.name || (price.product.metadata?.shaloom_kind === "subscription" && price.product.metadata?.shaloom_tier === tier)));
+		if (match) return match.id;
+		if (!prices.has_more || !prices.data?.length) break;
+		cursor = prices.data[prices.data.length - 1].id;
+	}
+	throw new Error("A Standard monthly offer could not be found for the scheduled downgrade. No subscription change was applied.");
 }
 
 async function apiDowngradeSubscription(request: Request, env: ShaloomEnv, user: UserRow): Promise<Response> {
 	const mutation = await enforceMutation(request, user);
 	if (mutation) return mutation;
 	if (user.plan !== "zealous" || !user.stripe_subscription_id) return fail("Downgrading requires a current Zealous subscription.", 409);
-	const standardPrice = env.STRIPE_PRICE_STANDARD_MONTHLY;
-	const zealousPrice = env.STRIPE_PRICE_ZEALOUS_MONTHLY;
-	if (!stripeApiKey(env) || !standardPrice || !zealousPrice) return fail("Stripe plan prices are not configured yet.", 503);
+	if (!stripeApiKey(env)) return fail("Stripe is not configured yet.", 503);
 	try {
 		const subscription = await stripeRequest(env, `/subscriptions/${encodeURIComponent(user.stripe_subscription_id)}`);
 		const now = Math.floor(Date.now() / 1000);
-		const start = Number(subscription.current_period_start);
-		const end = Number(subscription.current_period_end);
-		if (subscription.status !== "active" || subscription.cancel_at_period_end || !Number.isFinite(start) || !Number.isFinite(end) || end <= now || subscription.items?.data?.length !== 1 || subscription.items.data[0].price?.id !== zealousPrice) return fail("Downgrading is available only during an active Zealous billing period.", 409);
+		const item = subscription.items?.data?.[0];
+		const start = Number(subscription.current_period_start ?? item?.current_period_start);
+		const end = Number(subscription.current_period_end ?? item?.current_period_end);
+		if (subscription.status !== "active" || subscription.cancel_at_period_end || !Number.isFinite(start) || !Number.isFinite(end) || end <= now || subscription.items?.data?.length !== 1 || item?.price?.unit_amount !== checkoutOffer("subscription", "zealous").amount || item.price.currency !== "usd" || item.price.recurring?.interval !== "month") return fail("Downgrading is available only during an active Zealous billing period.", 409);
+		const zealousPrice = item.price.id;
+		// Discover a previously created Standard offer, rather than requiring a configured ID.
+		const standardPrice = await findMonthlyOffer(env, "standard");
 		let scheduleId = typeof subscription.schedule === "string" ? subscription.schedule : subscription.schedule?.id;
 		if (!scheduleId) {
 			const schedule = await stripeRequest(env, "/subscription_schedules", "POST", new URLSearchParams({ from_subscription: subscription.id }), `downgrade-schedule-${subscription.id}`);
@@ -619,35 +622,49 @@ async function apiCancelSubscription(request: Request, env: ShaloomEnv, user: Us
 		const invoiceId = typeof subscription.latest_invoice === "string" ? subscription.latest_invoice : subscription.latest_invoice?.id;
 		let paidAt: number | null = null;
 		let paymentIntent: string | null = null;
-		if (invoiceId) {
-			const invoice = await stripeRequest(env, `/invoices/${encodeURIComponent(invoiceId)}`);
-			paidAt = Number(invoice.status_transitions?.paid_at ?? 0) || null;
-			const payments = await stripeRequest(env, `/invoice_payments?invoice=${encodeURIComponent(invoiceId)}&limit=10`);
+		let paidInvoice: any = invoiceId ? await stripeRequest(env, `/invoices/${encodeURIComponent(invoiceId)}`) : null;
+		if (paidInvoice?.status !== "paid" || Number(paidInvoice.amount_paid) <= 0) {
+			const paid = await stripeRequest(env, `/invoices?${new URLSearchParams({ subscription: subscriptionId, status: "paid", limit: "1" })}`);
+			paidInvoice = paid.data?.[0] ?? null;
+		}
+		if (paidInvoice?.status === "paid" && Number(paidInvoice.amount_paid) > 0) {
+			paidAt = Number(paidInvoice.status_transitions?.paid_at ?? 0) || null;
+		}
+		const withinRefundWindow = paidAt !== null && Date.now() >= paidAt * 1000 && Date.now() - paidAt * 1000 <= 72 * 60 * 60 * 1000;
+		if (withinRefundWindow) {
+			const payments = await stripeRequest(env, `/invoice_payments?invoice=${encodeURIComponent(paidInvoice.id)}&limit=100`);
 			for (const payment of payments.data ?? []) {
+				if (payment.status !== "paid") continue;
 				const detail = payment.payment;
 				if (detail?.type === "payment_intent") paymentIntent = typeof detail.payment_intent === "string" ? detail.payment_intent : detail.payment_intent?.id;
 				if (paymentIntent) break;
 			}
-			paymentIntent ||= typeof invoice.payment_intent === "string" ? invoice.payment_intent : invoice.payment_intent?.id ?? null;
-		}
-		const withinRefundWindow = paidAt !== null && Date.now() - paidAt * 1000 <= 72 * 60 * 60 * 1000;
-		if (withinRefundWindow) {
+			paymentIntent ||= typeof paidInvoice.payment_intent === "string" ? paidInvoice.payment_intent : paidInvoice.payment_intent?.id ?? null;
 			if (!paymentIntent) return fail("Stripe did not return a refundable payment for the latest subscription invoice. No cancellation was applied.", 409);
-			const refundForm = new URLSearchParams({ payment_intent: paymentIntent, reason: "requested_by_customer" });
-			await stripeRequest(env, "/refunds", "POST", refundForm, `subscription-cancel-refund-${subscriptionId}`);
-			await stripeRequest(env, `/subscriptions/${encodeURIComponent(subscriptionId)}`, "DELETE", new URLSearchParams());
+			const payment = await stripeRequest(env, `/payment_intents/${encodeURIComponent(paymentIntent)}?expand[]=latest_charge`);
+			if (payment.status !== "succeeded" || !payment.latest_charge || typeof payment.latest_charge !== "object") return fail("The latest subscription payment is not refundable yet. Please try again later.", 409);
+			const policy = subscriptionRefundPolicy(paidAt, Number(payment.amount_received), Number(payment.latest_charge.amount_refunded ?? 0));
+			if (!policy.eligible) return fail("The 72-hour refund window has ended. Please retry cancellation to turn off renewal.", 409);
+			let refundId: string | null = null;
+			if (policy.amount > 0) {
+				const refundForm = new URLSearchParams({ payment_intent: paymentIntent, amount: String(policy.amount), reason: "requested_by_customer", "metadata[policy]": "subscription_50_percent_within_72_hours" });
+				const refund = await stripeRequest(env, "/refunds", "POST", refundForm, `subscription-half-refund-${subscriptionId}-${paidInvoice.id}`);
+				if (refund.status !== "succeeded" && refund.status !== "pending") return fail("Stripe did not accept the refund. No cancellation was applied.", 409);
+				refundId = refund.id;
+			}
+			await stripeRequest(env, `/subscriptions/${encodeURIComponent(subscriptionId)}`, "DELETE", new URLSearchParams({ prorate: "false", invoice_now: "false" }), `subscription-refund-cancel-${subscriptionId}`);
 			await env.DB.batch([
-				env.DB.prepare("UPDATE users SET plan = 'free', subscription_status = 'canceled', stripe_subscription_id = NULL, subscription_period_end = NULL WHERE id = ?").bind(user.id),
-				env.DB.prepare("UPDATE chapters SET is_private = 0, share_code_hash = NULL, updated_at = ? WHERE user_id = ?").bind(Date.now(), user.id),
+				env.DB.prepare("UPDATE chapters SET is_private = 0, share_code_hash = NULL, updated_at = ? WHERE user_id = ? AND EXISTS (SELECT 1 FROM users WHERE id = ? AND stripe_subscription_id = ?)").bind(Date.now(), user.id, user.id, subscriptionId),
+				env.DB.prepare("UPDATE users SET plan = 'free', subscription_status = 'canceled', stripe_subscription_id = NULL, subscription_period_end = NULL WHERE id = ? AND stripe_subscription_id = ?").bind(user.id, subscriptionId),
 			]);
-			await env.DB.prepare("INSERT OR IGNORE INTO billing_actions (id, user_id, subscription_id, action, created_at) VALUES (?, ?, ?, 'refund_cancel', ?)")
-				.bind(crypto.randomUUID(), user.id, subscriptionId, Date.now()).run();
-			return jsonResponse({ ok: true, refund: true, cancelAtPeriodEnd: false, message: "Subscription canceled and the latest subscription payment was refunded." });
+			await env.DB.prepare("INSERT OR IGNORE INTO billing_actions (id, user_id, subscription_id, action, stripe_refund_id, created_at) VALUES (?, ?, ?, 'refund_cancel', ?, ?)")
+				.bind(crypto.randomUUID(), user.id, subscriptionId, refundId, Date.now()).run();
+			return jsonResponse({ ok: true, refund: policy.amount > 0, cancelAtPeriodEnd: false, message: policy.amount > 0 ? "Subscription canceled. A 50% refund of the latest subscription payment has been requested." : "Subscription canceled. The latest payment was already refunded by at least 50%; no additional refund was issued." });
 		}
 		const form = new URLSearchParams({ cancel_at_period_end: "true" });
 		await stripeRequest(env, `/subscriptions/${encodeURIComponent(subscriptionId)}`, "POST", form, `subscription-cancel-period-${subscriptionId}`);
 		await env.DB.prepare("UPDATE users SET subscription_status = 'cancel_at_period_end', subscription_period_end = ? WHERE id = ?")
-			.bind(Number(subscription.current_period_end ?? 0) * 1000 || null, user.id).run();
+			.bind(Number(subscription.current_period_end ?? subscription.items?.data?.[0]?.current_period_end ?? 0) * 1000 || null, user.id).run();
 		await env.DB.prepare("INSERT OR IGNORE INTO billing_actions (id, user_id, subscription_id, action, created_at) VALUES (?, ?, ?, 'cancel_at_period_end', ?)")
 			.bind(crypto.randomUUID(), user.id, subscriptionId, Date.now()).run();
 		return jsonResponse({ ok: true, refund: false, cancelAtPeriodEnd: true, message: "No refund was issued. Auto-renew is off and access continues through the paid period." });

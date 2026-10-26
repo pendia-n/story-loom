@@ -4,12 +4,6 @@ export interface ShaloomEnv {
 	JWT_KEY: string;
 	STRIPE_API_KEY?: string;
 	STRIPE_WEBHOOK_SECRET?: string;
-	STRIPE_PRICE_STANDARD_MONTHLY?: string;
-	STRIPE_PRICE_ZEALOUS_MONTHLY?: string;
-	STRIPE_PRICE_STANDARD_CHAPTERS?: string;
-	STRIPE_PRICE_ZEALOUS_CHAPTERS?: string;
-	STRIPE_PRICE_STANDARD_MEDIA?: string;
-	STRIPE_PRICE_ZEALOUS_MEDIA?: string;
 }
 
 export interface UserRow {
