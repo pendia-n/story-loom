@@ -5,6 +5,8 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "shaloom",
+	"workers_dev": true,
+	"preview_urls": true,
 	"routes": [
 		{ "pattern": "shaloom.space", "custom_domain": true },
 		{ "pattern": "www.shaloom.space", "custom_domain": true }
