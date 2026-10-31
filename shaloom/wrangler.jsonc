@@ -5,6 +5,10 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "shaloom",
+	"routes": [
+		{ "pattern": "shaloom.space", "custom_domain": true },
+		{ "pattern": "www.shaloom.space", "custom_domain": true }
+	],
 	"compatibility_date": "2026-09-25",
 	"main": "./workers/app.ts",
 	"assets": {
