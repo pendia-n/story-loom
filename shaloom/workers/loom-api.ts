@@ -18,7 +18,7 @@ const DAY = 24 * 60 * 60 * 1000;
 const AUTH_WINDOW = 15 * 60 * 1000;
 const AUTH_MAX_ATTEMPTS = 10;
 const BASE_CAPS: Record<Tier, Caps> = {
-	free: { chapters: 1, images: 8, videos: 0, maxBytes: 5 * 1024 * 1024, imageTypes: ["image/png", "image/jpeg"], videoTypes: [] },
+	free: { chapters: 1, images: 25, videos: 0, maxBytes: 5 * 1024 * 1024, imageTypes: ["image/png", "image/jpeg"], videoTypes: [] },
 	standard: { chapters: 8, images: 50, videos: 2, maxBytes: 10 * 1024 * 1024, imageTypes: ["image/png", "image/jpeg", "image/gif"], videoTypes: ["video/mp4"] },
 	zealous: { chapters: 40, images: 100, videos: 7, maxBytes: 20 * 1024 * 1024, imageTypes: ["image/png", "image/jpeg", "image/gif"], videoTypes: ["video/mp4"] },
 };
