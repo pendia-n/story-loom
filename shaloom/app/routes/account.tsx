@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { FooterSocial } from "../footer-social";
 import "../spark.css";
 
 type User = { id: string; username: string; plan: "free" | "standard" | "zealous"; recoveryEnabled: boolean; subscriptionStatus: string | null };
@@ -49,7 +50,7 @@ function AccountLayout({ children, user }: { children: React.ReactNode; user: Us
 			<nav><Link to="/gallery">My gallery</Link><Link to="/spark">Spark</Link><Link to="/pricing">Plans</Link>{user && <><Link to="/profile">Profile</Link><Link to="/billing">Billing</Link><button type="button" onClick={() => void signOut()}>Sign out</button></>}</nav>
 			<span className="account-identity">{user ? `${user.username} · ${user.plan}` : "Your stories, in their own room"}</span>
 		</header><div className="account-content">{children}</div>
-		<footer className="account-footer"><Link to="/demo">Walk the demo</Link><span>Shaloom · a place for your scenes</span></footer>
+		<footer className="account-footer"><Link to="/demo">Walk the demo</Link><span>Shaloom · a place for your scenes</span><FooterSocial /></footer>
 	</main>;
 }
 

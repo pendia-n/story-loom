@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
+import { FooterSocial } from "../footer-social";
 import "../promotion.css";
 
 export function meta() {
@@ -83,6 +84,6 @@ export default function Home() {
 		<section className="promo-faq promo-section" id="practical-details" aria-labelledby="faq-title"><div><p className="eyebrow">BEFORE YOU BEGIN</p><h2 id="faq-title">A few practical<br /><em>details.</em></h2><Link className="text-link" to="/pricing">Compare all plan limits ↗</Link></div><div className="promo-questions">{questions.map((item) => <details key={item.question}><summary>{item.question}</summary><p>{item.answer}</p></details>)}</div></section>
 		<section className="promo-updates promo-section" id="announcements"><p className="promo-label">PRODUCT UPDATES</p><p>The sample exhibition is open. You can create a free chapter and explore public chapters in Spark after signing in.</p><Link className="text-link" to="/spark">Explore Spark ↗</Link></section>
 		<section className="promo-closing"><p className="eyebrow">AN EXHIBITION ONLY YOU COULD MAKE</p><h2>What would you put<br />in your first room?</h2><Link className="button button-light" to={createPath}>{viewer ? "Open your gallery" : "Create your first gallery"} <span aria-hidden="true">↗</span></Link><p>One public chapter is free. Choose a collection you’re comfortable sharing.</p></section>
-		<footer className="site-footer promo-footer"><Link className="brand" to="/">Shaloom</Link><p>A place for the images you want someone to spend time with.</p><nav aria-label="Footer navigation"><a href="#about">About</a><a href="#announcements">Updates</a><Link to="/pricing">Pricing</Link><a href="#practical-details">Questions</a></nav></footer>
+		<footer className="site-footer promo-footer"><Link className="brand" to="/">Shaloom</Link><p>A place for the images you want someone to spend time with.</p><nav aria-label="Footer navigation"><a href="#about">About</a><a href="#announcements">Updates</a><Link to="/pricing">Pricing</Link><a href="#practical-details">Questions</a></nav><FooterSocial /></footer>
 	</main>;
 }
