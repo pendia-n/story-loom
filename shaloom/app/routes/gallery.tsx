@@ -1,5 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, type LoaderFunctionArgs } from "react-router";
+import { env } from "cloudflare:workers";
+import { galleryLoginRedirect } from "../../workers/gallery-access";
+import type { ShaloomEnv } from "../../workers/security";
+import { authPagePath } from "../auth-navigation";
+import { CopyShareLink } from "../copy-share-link";
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+	const redirect = await galleryLoginRedirect(request, params.chapterId, env as unknown as ShaloomEnv);
+	if (redirect) throw redirect;
+	return null;
+}
+
+export function headers() { return { "Cache-Control": "private, no-store", Vary: "Cookie" }; }
 
 type LightingMode = "dim" | "lighter" | "daylight" | "twilight" | "party";
 type FrameMode = "extended" | "wood" | "silver";
@@ -142,7 +155,7 @@ export default function Gallery() {
 			.then((response) => {
 				if (!response.ok) {
 					if (chapterId && response.status === 404) setNeedsPrivateCode(true);
-					if (chapterId && response.status === 401) setError("Sign in before entering this gallery.");
+					if (chapterId && response.status === 401) window.location.replace(authPagePath("/login", `${location.pathname}${location.search}`));
 					throw new Error("Media list unavailable");
 				}
 				return response.json() as Promise<{ items?: GalleryItem[]; total?: number; order?: string }>;
@@ -259,6 +272,7 @@ export default function Gallery() {
 							</div>
 						</div>
 					</details>
+					{chapterId && <CopyShareLink chapterId={chapterId} className="glass-button" />}
 					<button type="button" className="glass-button fullscreen-button" onClick={() => void toggleFullscreen()} aria-label="Toggle fullscreen">⛶ <span>Fullscreen</span></button>
 					<Link className="glass-button close-gallery-button" to={chapterId ? "/gallery" : "/"}>Close gallery <span aria-hidden="true">×</span></Link>
 				</div>
@@ -297,7 +311,7 @@ export default function Gallery() {
 				<div className="gallery-instructions">
 					<span className="gallery-status">{galleryCount === null ? "Preparing gallery" : `${galleryCount} scenes · ${chapterId ? (galleryOrder === "shuffled" ? "randomized order" : "your planned order") : (shuffleSeed ? "intentional shuffle" : "upload time order")}`}</span>
 					<span className="gallery-help">{status}</span>
-					{error && <span className="gallery-error" role="status">{error} {chapterId && error.includes("Sign in") && <Link to="/login">Sign in ↗</Link>}</span>}
+						{error && <span className="gallery-error" role="status">{error} {chapterId && error.includes("Sign in") && <Link to={authPagePath("/login", `${location.pathname}${location.search}`)}>Sign in ↗</Link>}</span>}
 					{chapterId && needsPrivateCode && <form className="gallery-code-form" onSubmit={(event) => void enterPrivateChapter(event)}><input aria-label="Private chapter code" placeholder="8-character chapter code" value={privateCode} onChange={(event) => setPrivateCode(event.target.value)} minLength={8} maxLength={8} pattern="[A-Za-z0-9]{8}" required /><button className="gallery-pill">Enter</button></form>}
 				</div>
 				<div className="gallery-actions">

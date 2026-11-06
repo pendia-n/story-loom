@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { FooterSocial } from "../footer-social";
+import { authPagePath, safeReturnTo } from "../auth-navigation";
+import { CopyShareLink } from "../copy-share-link";
 import "../spark.css";
 
 type User = { id: string; username: string; plan: "free" | "standard" | "zealous"; recoveryEnabled: boolean; subscriptionStatus: string | null };
@@ -59,6 +61,8 @@ export default function Account() {
 	const navigate = useNavigate();
 	const { chapterId } = useParams();
 	const path = location.pathname;
+	const returnParam = new URLSearchParams(location.search).get("returnTo");
+	const returnTo = safeReturnTo(returnParam);
 	const [user, setUser] = useState<User | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
@@ -85,8 +89,8 @@ export default function Account() {
 		if (!loading && ["/gallery", "/profile", "/security", "/billing", "/spark"].includes(path) && !user) navigate("/login", { replace: true });
 	}, [loading, path, user, navigate]);
 	useEffect(() => {
-		if (!loading && user && ["/signup", "/login", "/recover"].includes(path)) navigate("/gallery", { replace: true });
-	}, [loading, path, user, navigate]);
+		if (!loading && user && ["/signup", "/login", "/recover"].includes(path)) navigate(returnTo, { replace: true });
+	}, [loading, path, user, navigate, returnTo]);
 	useEffect(() => {
 		if (!user || path !== "/gallery") return;
 		api("/api/chapters").then((data) => { setChapters(data.chapters ?? []); setCapacity(data.capacity ?? 1); }).catch((reason: Error) => setError(reason.message));
@@ -122,7 +126,7 @@ export default function Account() {
 		try {
 			const result = await api(endpoint, { method: "POST", body: JSON.stringify(payload) });
 			setUser(result.user ?? null);
-			navigate("/gallery");
+			navigate(returnTo, { replace: true });
 		} catch (reason) { setError(reason instanceof Error ? reason.message : "Could not continue."); }
 	}
 
@@ -140,7 +144,7 @@ export default function Account() {
 		try {
 			const result = await api("/api/auth/recover/complete", { method: "POST", body: JSON.stringify({ newPassword: recoveryPassword }) });
 			setNotice(result.message ?? "Password changed. Sign in with the new password.");
-			setRecoveryPassword(""); setRecoveryStep("username"); navigate("/login");
+			setRecoveryPassword(""); setRecoveryStep("username"); navigate(authPagePath("/login", returnParam));
 		} catch (reason) { setError(reason instanceof Error ? reason.message : "Could not reset the password."); }
 		finally { setRecoveryBusy(false); }
 	}
@@ -162,7 +166,7 @@ export default function Account() {
 			{recoveryStep === "username" && <form className="account-form" onSubmit={(event) => { event.preventDefault(); setError(""); setRecoveryStep("passcode"); }}><Field label="Username"><input value={recoveryUsername} onChange={(event) => setRecoveryUsername(event.target.value)} required minLength={3} maxLength={24} autoComplete="username" /></Field><button className="button button-primary" type="submit">Continue</button></form>}
 			{recoveryStep === "passcode" && <form className="account-form" onSubmit={(event) => void verifyRecoveryPasscode(event)}><p className="account-footnote">Account name: <strong>{recoveryUsername}</strong></p><Field label="Recovery passcode"><input value={recoveryPasscode} onChange={(event) => setRecoveryPasscode(event.target.value)} type="password" required autoComplete="off" /></Field><button className="button button-primary" type="submit" disabled={recoveryBusy}>{recoveryBusy ? "Checking…" : "Verify passcode"}</button><button className="button button-outline" type="button" onClick={() => { setRecoveryStep("username"); setRecoveryPasscode(""); setError(""); }}>Use a different username</button></form>}
 			{recoveryStep === "new-password" && <form className="account-form" onSubmit={(event) => void finishRecovery(event)}><p className="account-footnote">Passcode verified for <strong>{recoveryUsername}</strong>. This recovery step expires after 10 minutes.</p><Field label="New password"><input value={recoveryPassword} onChange={(event) => setRecoveryPassword(event.target.value)} type="password" required minLength={12} maxLength={128} autoComplete="new-password" /></Field><p className="account-footnote">Use 12–128 characters. You can reset the password once per 24 hours.</p><button className="button button-primary" type="submit" disabled={recoveryBusy || recoveryPassword.length < 12}>{recoveryBusy ? "Saving…" : "Set new password"}</button></form>}
-			<div className="account-switch"><Link to="/login">Back to sign in</Link><Link to="/signup">Create an account</Link></div>
+			<div className="account-switch"><Link to={authPagePath("/login", returnParam)}>Back to sign in</Link><Link to={authPagePath("/signup", returnParam)}>Create an account</Link></div>
 		</section>}
 		{["/signup", "/login"].includes(path) && <section className="account-card account-narrow">
 			<p className="eyebrow">{path === "/signup" ? "A ROOM OF YOUR OWN" : "STEP BACK INSIDE"}</p><h1>{title}</h1>
@@ -173,12 +177,12 @@ export default function Account() {
 				{path === "/signup" && <Field label="Recovery passcode (optional, but needed if you forget your password)"><input name="recoveryPasscode" type="password" minLength={8} maxLength={128} autoComplete="off" /></Field>}
 				<button className="button button-primary" type="submit">{path === "/signup" ? "Create account" : "Sign in"}</button>
 			</form>
-			<div className="account-switch">{path !== "/login" && <Link to="/login">Already have an account? Sign in</Link>}{path !== "/signup" && <Link to="/signup">Create an account</Link>}{path !== "/signup" && <Link to="/recover">Forgot password?</Link>}</div>
+			<div className="account-switch">{path !== "/login" && <Link to={authPagePath("/login", returnParam)}>Already have an account? Sign in</Link>}{path !== "/signup" && <Link to={authPagePath("/signup", returnParam)}>Create an account</Link>}{path !== "/signup" && <Link to={authPagePath("/recover", returnParam)}>Forgot password?</Link>}</div>
 		</section>}
 
 		{path === "/gallery" && user && <section>
 			<div className="account-heading"><div><p className="eyebrow">YOUR COLLECTION, YOUR ORDER</p><h1>{title}</h1><p className="account-copy">{chapters.length} of {capacity} chapter spaces used. Open a chapter to arrange its media, then step inside to walk through it.</p></div>{chapters.length >= capacity ? <Link className="button button-primary" to="/pricing">{user.plan === "free" ? "Upgrade for more chapters" : "Get more chapter spaces"}</Link> : <button className="button button-primary" onClick={async () => { const name = window.prompt("Name this chapter"); if (!name?.trim()) return; try { await api("/api/chapters", { method: "POST", body: JSON.stringify({ title: name }) }); const refreshed = await api("/api/chapters"); setChapters(refreshed.chapters ?? []); setCapacity(refreshed.capacity ?? capacity); setError(""); } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not create the chapter."); } }}>＋ New chapter</button>}</div>
-			{chapters.length === 0 ? <div className="account-empty"><h2>Your first chapter is waiting.</h2><p>Give a collection a name—then add the images, GIFs, and short videos you want to keep together.</p><button className="button button-primary" onClick={async () => { const name = window.prompt("Name your first chapter"); if (!name?.trim()) return; try { await api("/api/chapters", { method: "POST", body: JSON.stringify({ title: name }) }); const refreshed = await api("/api/chapters"); setChapters(refreshed.chapters ?? []); setCapacity(refreshed.capacity ?? 1); } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not create the chapter."); } }}>Create a chapter</button></div> : <div className="chapter-grid">{chapters.map((chapter) => <article className="chapter-card" key={chapter.id}><span className="chapter-count">{String(chapter.media_count).padStart(2, "0")} SCENES · {chapter.is_private ? "PRIVATE" : "PUBLIC"}</span><h2>{chapter.title}</h2><p>Created {new Date(chapter.created_at).toLocaleDateString()}</p><div className="chapter-actions"><Link className="button button-primary" to={`/gallery/${chapter.id}`}>Walk inside ↗</Link><Link className="button button-outline" to={`/chapter/${chapter.id}`}>Edit chapter</Link></div></article>)}</div>}
+			{chapters.length === 0 ? <div className="account-empty"><h2>Your first chapter is waiting.</h2><p>Give a collection a name—then add the images, GIFs, and short videos you want to keep together.</p><button className="button button-primary" onClick={async () => { const name = window.prompt("Name your first chapter"); if (!name?.trim()) return; try { await api("/api/chapters", { method: "POST", body: JSON.stringify({ title: name }) }); const refreshed = await api("/api/chapters"); setChapters(refreshed.chapters ?? []); setCapacity(refreshed.capacity ?? 1); } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not create the chapter."); } }}>Create a chapter</button></div> : <div className="chapter-grid">{chapters.map((chapter) => <article className="chapter-card" key={chapter.id}><span className="chapter-count">{String(chapter.media_count).padStart(2, "0")} SCENES · {chapter.is_private ? "PRIVATE" : "PUBLIC"}</span><h2>{chapter.title}</h2><p>Created {new Date(chapter.created_at).toLocaleDateString()}</p><div className="chapter-actions"><Link className="button button-primary" to={`/gallery/${chapter.id}`}>Walk inside ↗</Link><Link className="button button-outline" to={`/chapter/${chapter.id}`}>Edit chapter</Link><CopyShareLink chapterId={chapter.id} /></div></article>)}</div>}
 			<div className="account-bottom-links"><Link to="/spark">Explore public chapters</Link><Link to="/pricing">Compare plans</Link><button onClick={() => void logout()}>Sign out</button></div>
 		</section>}
 
@@ -351,7 +355,7 @@ function ChapterEditor({ chapterId, user }: { chapterId: string; user: User | nu
 		await saveMediaOrder(ids);
 	}
 	if (!user) return <AccountLayout user={null}><p className="account-status">Sign in to manage chapters.</p><Link to="/login">Sign in</Link></AccountLayout>;
-	return <AccountLayout user={user}><div className="account-heading"><div><p className="eyebrow">CHAPTER WORKROOM</p><h1>{detail?.chapter.title ?? "Open chapter"}</h1><p className="account-copy">Upload, describe, and arrange the scenes in this collection.</p></div><div className="chapter-actions"><Link className="button button-primary" to={`/gallery/${chapterId}`}>Walk inside ↗</Link><Link className="button button-outline" to="/gallery">Back to library</Link></div></div>
+	return <AccountLayout user={user}><div className="account-heading"><div><p className="eyebrow">CHAPTER WORKROOM</p><h1>{detail?.chapter.title ?? "Open chapter"}</h1><p className="account-copy">Upload, describe, and arrange the scenes in this collection.</p></div><div className="chapter-actions"><Link className="button button-primary" to={`/gallery/${chapterId}`}>Walk inside ↗</Link><CopyShareLink chapterId={chapterId} /><Link className="button button-outline" to="/gallery">Back to library</Link></div></div>
 		{error && <p className="account-alert" role="alert">{error}</p>}{notice && <p className="account-notice" role="status">{notice}</p>}
 		{detail?.chapter.owner && <>
 			<div className="editor-columns"><section className="account-card"><p className="eyebrow">CHAPTER SETTINGS</p><form className="account-form" onSubmit={saveChapter}><Field label="Chapter title"><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} required /></Field>{detail.limits.plan !== "free" && <label className="privacy-toggle"><input type="checkbox" checked={isPrivate} onChange={(event) => setPrivate(event.target.checked)} /><span>Make this chapter private</span></label>}{isPrivate && <Field label="Share code · exactly 8 letters or numbers"><input value={shareCode} onChange={(event) => setShareCode(event.target.value)} minLength={8} maxLength={8} pattern="[A-Za-z0-9]{8}" required /></Field>}<p className="account-footnote">{detail.limits.plan === "free" ? "Free chapters are public. Upgrade to make chapters private." : "Private visitors must sign in and enter this 8-character code. Turning privacy off removes the code."}</p><button className="button button-outline">Save chapter</button></form></section>

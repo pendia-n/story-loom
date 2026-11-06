@@ -256,6 +256,11 @@ button, .button, .glass-button, .gallery-pill, .look-choice, .header-enter { min
 .chapter-card h2 { margin: 24px 0 7px; font: 400 clamp(24px, 3vw, 32px)/1.14 Georgia,serif; }
 .chapter-card > p { color: var(--muted); font-size: 12px; }
 .chapter-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: auto; padding-top: 17px; }
+.copy-share-control { position: relative; min-width: 0; display: inline-flex; }
+.copy-share-fallback { position: absolute; top: calc(100% + 8px); right: 0; z-index: 8; width: min(300px, calc(100vw - 32px)); padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--cream, #f3ead8); color: var(--ink); box-shadow: 0 8px 30px #0003; font-size: 12px; }
+.copy-share-fallback label { display: grid; gap: 8px; }
+.copy-share-fallback input { width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--line); color: var(--ink); background: #fff; }
+.copy-share-fallback > span { display: block; margin-top: 8px; line-height: 1.5; }
 .button-outline { border: 1px solid rgba(36,55,45,.22); color: var(--ink); background: transparent; }
 .button-outline:hover { background: rgba(255,255,255,.65); }
 .button:disabled { opacity: .53; cursor: not-allowed; }

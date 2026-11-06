@@ -1,6 +1,6 @@
 # Shaloom — a shareable product overview
 
-Updated: 3 November 2026. Website: https://shaloom.space
+Updated: 7 November 2026. Website: https://shaloom.space
 
 This is a plain-language summary for sharing with another chat, collaborator, or potential partner. It describes the current product and separates implemented features from things that still need real-world verification. It is not a technical specification or a promise that every payment scenario has been tested.
 
@@ -85,6 +85,7 @@ Media packs expand the selected chapter, not every chapter in the account. They 
 “Public” means visible to signed-in members, not unrestricted anonymous browsing of members' galleries. The standalone demo is the exception.
 
 - Free chapters are public to signed-in members.
+- Use “Copy share link” from the chapter library, chapter editor, or open gallery. Signed-out visitors opening that link are redirected to login, then returned to the gallery after signing in or registering. Private-gallery codes are not included in the copied link.
 - Paid members can make a chapter private.
 - A visitor to a private chapter must sign in and enter the owner's eight-character code, made from letters, numbers, or both.
 - Spark lists public chapters and provides title/creator search, media-type filters, collection-size filters, recent-date filters, sorting, and pagination.
