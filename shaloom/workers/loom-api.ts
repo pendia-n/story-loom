@@ -142,6 +142,11 @@ async function mediaRows(env: ShaloomEnv, chapterId: string, plan: Tier, shuffle
 		.sort((a, b) => a.sort - b.sort || a.row.id.localeCompare(b.row.id)).map(({ row }) => row);
 }
 
+async function chapterOwnerTier(env: ShaloomEnv, chapter: ChapterRow): Promise<Tier> {
+	const owner = await env.DB.prepare("SELECT plan FROM users WHERE id = ?").bind(chapter.user_id).first<{ plan: Tier }>();
+	return owner && isTier(owner.plan) ? owner.plan : "free";
+}
+
 async function accessibleChapter(request: Request, env: ShaloomEnv, chapterId: string, user: UserRow): Promise<ChapterRow | null> {
 	const chapter = await env.DB.prepare("SELECT * FROM chapters WHERE id = ?").bind(chapterId).first<ChapterRow>();
 	if (!chapter || !(await canReadChapter(request, env, user, chapter))) return null;
@@ -312,7 +317,8 @@ async function apiChapterGallery(request: Request, env: ShaloomEnv, user: UserRo
 	const chapter = await accessibleChapter(request, env, chapterId, user);
 	if (!chapter) return fail("Chapter was not found or access was not granted.", 404);
 	const url = new URL(request.url);
-	const rows = await mediaRows(env, chapterId, await currentTier(user), url.searchParams.get("shuffle") ?? undefined);
+	const galleryTier = await chapterOwnerTier(env, chapter);
+	const rows = await mediaRows(env, chapterId, galleryTier, url.searchParams.get("shuffle") ?? undefined);
 	const from = Math.max(0, Math.min(100_000, Number.parseInt(url.searchParams.get("from") ?? "0", 10) || 0));
 	const count = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get("count") ?? "20", 10) || 20));
 	const items = rows.slice(from, from + count).map((row, index) => ({
@@ -325,16 +331,17 @@ async function apiChapterGallery(request: Request, env: ShaloomEnv, user: UserRo
 		url: `/api/media/${encodeURIComponent(row.id)}`,
 		posterUrl: `/api/media/${encodeURIComponent(row.id)}`,
 	}));
-	return jsonResponse({ items, total: rows.length, from, count, order: await currentTier(user) === "free" ? "shuffled" : "planned" });
+	return jsonResponse({ items, total: rows.length, from, count, order: galleryTier === "free" ? "shuffled" : "planned" });
 }
 
 async function apiChapter(request: Request, env: ShaloomEnv, user: UserRow, chapterId: string): Promise<Response> {
 	const chapter = await accessibleChapter(request, env, chapterId, user);
 	if (!chapter) return fail("Chapter was not found or access was not granted.", 404);
 	if (request.method === "GET") {
-		const [media, caps] = await Promise.all([mediaRows(env, chapterId, await currentTier(user)), mediaCapacity(env, user, chapterId)]);
+		const galleryTier = await chapterOwnerTier(env, chapter);
+		const [media, caps] = await Promise.all([mediaRows(env, chapterId, galleryTier), mediaCapacity(env, user, chapterId)]);
 		return jsonResponse({ chapter: { id: chapter.id, title: chapter.title, isPrivate: Boolean(chapter.is_private), owner: chapter.user_id === user.id,
-			canEdit: chapter.user_id === user.id, createdAt: chapter.created_at }, media: media.map(mediaView), limits: caps });
+			canEdit: chapter.user_id === user.id, createdAt: chapter.created_at }, media: media.map(mediaView), limits: caps, order: galleryTier === "free" ? "shuffled" : "planned" });
 	}
 	if (chapter.user_id !== user.id) return fail("Only the chapter owner can change it.", 403);
 	const mutation = await enforceMutation(request, user);
